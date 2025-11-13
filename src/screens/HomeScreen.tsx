@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
-  FlatList,
   Image,
   TouchableOpacity,
   TextInput,
@@ -11,9 +10,10 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Platform,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { NativeStackScreenProps } from '@react-navigation/native-stack'
+import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../navigation/AppNavigator'
 import { getCandidates, getSettings, subscribeToSettings } from '../lib/api'
 import { useNavigation } from '@react-navigation/native'
@@ -24,33 +24,31 @@ import { isWeb } from '../lib/platform'
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>
 
 export default function HomeScreen({ route }: Props) {
-  const nimFromRoute = route?.params?.nim
+  const nimFromRoute = route?.params?.nim as string | undefined
   const { nim, setNim } = useUser()
-
   const [candidates, setCandidates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [settings, setSettings] = useState<any | null>(null)
-  const [nowTick, setNowTick] = useState(Date.now())
+  const [nowTick, setNowTick] = useState<number>(Date.now())
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
 
   const navigation = useNavigation<any>()
   const modalRef = useRef<any>(null)
   const insets = useSafeAreaInsets()
 
-  // HEIGHTS
-  const BOTTOM_NAV_HEIGHT = 64
+  // adjust these if you change navbar height later
+  const BOTTOM_NAV_HEIGHT = 90 // make slightly larger to create safe space
   const EXTRA_GAP = 12
 
-  // EXTRA PADDING FOR WEB (fix mobile browser overlays)
-  const EXTRA_WEB_PADDING = isWeb ? 140 : 0
+  // add extra padding on web/mobile browsers (some browsers overlay UI)
+  const EXTRA_WEB_PADDING = isWeb ? 160 : 0
 
-  const contentBottomPadding =
-    insets.bottom + BOTTOM_NAV_HEIGHT + EXTRA_GAP + EXTRA_WEB_PADDING
+  const contentBottomPadding = insets.bottom + BOTTOM_NAV_HEIGHT + EXTRA_GAP + EXTRA_WEB_PADDING
 
   const [successVisible, setSuccessVisible] = useState(false)
 
-  // sync NIM from route into context
+  // sync route nim to context (if route passed nim)
   useEffect(() => {
     if (nimFromRoute && nimFromRoute !== nim) {
       setNim(nimFromRoute)
@@ -59,28 +57,26 @@ export default function HomeScreen({ route }: Props) {
 
   useEffect(() => {
     let mounted = true
-
-    const load = async () => {
+    const loadAll = async () => {
       try {
-        const c = await getCandidates()
+        const cands = await getCandidates()
         const s = await getSettings().catch(() => null)
         if (!mounted) return
-
-        setCandidates(c || [])
+        setCandidates(cands || [])
         setSettings(s)
+      } catch (err) {
+        console.error('Failed loading data', err)
       } finally {
         if (mounted) setLoading(false)
       }
     }
+    loadAll()
 
-    load()
+    const sub = subscribeToSettings((row: any) => {
+      setSettings(row)
+    })
 
-    // subscribe to settings changes
-    const sub = subscribeToSettings((row) => setSettings(row))
-
-    // countdown tick
     const t = setInterval(() => setNowTick(Date.now()), 1000)
-
     return () => {
       mounted = false
       clearInterval(t)
@@ -91,25 +87,30 @@ export default function HomeScreen({ route }: Props) {
   }, [])
 
   const electionEnd = useMemo(() => {
-    if (settings?.election_end_at) return new Date(settings.election_end_at)
-    return new Date(Date.now() + 1000 * 60 * 60 * 24 * 100)
+    if (settings && settings.election_end_at) return new Date(settings.election_end_at)
+    const d = new Date()
+    d.setDate(d.getDate() + 124)
+    d.setHours(d.getHours() + 4)
+    d.setMinutes(d.getMinutes() + 30)
+    d.setSeconds(d.getSeconds() + 29)
+    return d
   }, [settings])
 
-  const isElectionOpen = settings?.election_open ?? true
+  const isElectionOpen = useMemo(() => {
+    if (settings && typeof settings.election_open === 'boolean') return settings.election_open
+    return true
+  }, [settings])
 
   const computeCountdown = () => {
     if (!isElectionOpen) return { days: 0, hours: 0, minutes: 0, seconds: 0 }
-
-    const diff = Math.max(0, electionEnd.getTime() - nowTick)
-    return {
-      days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-      hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
-      minutes: Math.floor((diff / 1000 / 60) % 60),
-      seconds: Math.floor((diff / 1000) % 60),
-    }
+    const now = nowTick
+    const diff = Math.max(0, electionEnd.getTime() - now)
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24)
+    const minutes = Math.floor((diff / (1000 * 60)) % 60)
+    const seconds = Math.floor((diff / 1000) % 60)
+    return { days, hours, minutes, seconds }
   }
-
-  const countdown = computeCountdown()
 
   const filtered = candidates.filter((c) => {
     const q = search.toLowerCase()
@@ -121,9 +122,15 @@ export default function HomeScreen({ route }: Props) {
     )
   })
 
+  const countdown = computeCountdown()
+
   const openProfile = (id: string) => {
     setSelectedCandidateId(id)
-    if (!isWeb) modalRef.current?.open?.()
+    if (!isWeb) {
+      try {
+        modalRef.current?.open?.()
+      } catch {}
+    }
   }
 
   if (loading) {
@@ -134,30 +141,32 @@ export default function HomeScreen({ route }: Props) {
     )
   }
 
-  // lazy-load modalize (native only)
+  // lazy load Modalize for native only
   let ModalizeComp: any = null
   if (!isWeb) {
     try {
       const maybe = require('react-native-modalize')
-      ModalizeComp = maybe.Modalize ?? maybe.default
-    } catch {}
+      ModalizeComp = maybe?.Modalize ?? maybe?.default ?? null
+    } catch (e) {
+      ModalizeComp = null
+    }
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* MAIN SCROLL AREA — cards scroll correctly now */}
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: contentBottomPadding }}
-        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
       >
         {/* Top */}
         <View style={styles.topRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Image source={require('../../assets/logo1.png')} style={styles.avatar} />
             <View style={{ marginLeft: 12 }}>
-              <Text style={styles.username}>
-                {nim || nimFromRoute || 'Pemilih'}
-              </Text>
+              <Text style={styles.username}>{nim || nimFromRoute ? (nim || nimFromRoute) : 'Pemilih'}</Text>
               <Text style={styles.roleText}>Pemilih</Text>
             </View>
           </View>
@@ -168,60 +177,40 @@ export default function HomeScreen({ route }: Props) {
           <Text style={[styles.countTitle, !isElectionOpen && styles.countTitleClosed]}>
             Waktu tersisa untuk pemilihan
           </Text>
-
-          {!isElectionOpen && (
-            <Text style={styles.closedLabel}>Pemilihan Ditutup</Text>
-          )}
-
+          {!isElectionOpen && <Text style={styles.closedLabel}>Pemilihan Ditutup</Text>}
           <View style={styles.countRow}>
             <View style={styles.countBlock}>
               <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
                 {countdown.days}
               </Text>
-              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>
-                Hari
-              </Text>
+              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Hari</Text>
             </View>
-
             <View style={styles.separator} />
-
             <View style={styles.countBlock}>
               <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
                 {countdown.hours}
               </Text>
-              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>
-                Jam
-              </Text>
+              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Jam</Text>
             </View>
-
             <View style={styles.separator} />
-
             <View style={styles.countBlock}>
               <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
                 {countdown.minutes}
               </Text>
-              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>
-                Menit
-              </Text>
+              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Menit</Text>
             </View>
-
             <View style={styles.separator} />
-
             <View style={styles.countBlock}>
               <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
                 {countdown.seconds}
               </Text>
-              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>
-                Detik
-              </Text>
+              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Detik</Text>
             </View>
           </View>
         </View>
 
-        {/* Header */}
+        {/* Heading + search */}
         <Text style={styles.sectionTitle}>Kandidat Capresma Cawapresma</Text>
-
-        {/* Search */}
         <View style={styles.searchWrapper}>
           <TextInput
             placeholder="cari kandidat..."
@@ -232,28 +221,19 @@ export default function HomeScreen({ route }: Props) {
           />
         </View>
 
-        {/* Candidate CARDS — scrollable */}
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          scrollEnabled={false}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
+        {/* Candidate list rendered inside ScrollView to avoid nested scrolling issues on mobile web */}
+        <View style={{ paddingBottom: 8 }}>
+          {filtered.map((item) => (
+            <View key={item.id} style={styles.card}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Image
-                  source={
-                    item.photo_url
-                      ? { uri: item.photo_url }
-                      : require('../../assets/logo1.png')
-                  }
+                  source={item.photo_url ? { uri: item.photo_url } : require('../../assets/logo1.png')}
                   style={styles.candidateImage}
                 />
-
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.candidateName}>
                     {item.name_president} & {item.name_vice}
                   </Text>
-
                   <Text style={styles.candidateSub}>{item.faculty ?? 'Kampus'}</Text>
 
                   <TouchableOpacity
@@ -265,18 +245,20 @@ export default function HomeScreen({ route }: Props) {
                 </View>
               </View>
             </View>
-          )}
-          ItemSeparatorComponent={() => <View style={{ height: 15 }} />}
-        />
+          ))}
+        </View>
       </ScrollView>
 
-      {/* Bottom nav (FIXED) */}
-      <View style={styles.bottomNav}>
+      {/* Bottom nav: use fixed on web, absolute on native. Ensure it sits on top (zIndex). */}
+      <View style={[styles.bottomNav, isWeb ? { position: 'fixed' as const } : { position: 'absolute' }, { zIndex: 999 }]}>
         <TouchableOpacity style={styles.navItem}>
           <Text style={[styles.navText, { color: '#4F46E5' }]}>Home</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Results')}>
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => navigation.navigate('Results')}
+        >
           <Text style={styles.navText}>Bagan</Text>
         </TouchableOpacity>
 
@@ -288,11 +270,42 @@ export default function HomeScreen({ route }: Props) {
         </TouchableOpacity>
       </View>
 
-      {/* Modal (web or native fallback) */}
-      {isWeb ? (
-        <Modal visible={!!selectedCandidateId} animationType="slide">
+      {/* Modals */}
+      {!isWeb && ModalizeComp ? (
+        <ModalizeComp
+          ref={modalRef}
+          onClosed={() => setSelectedCandidateId(null)}
+          modalStyle={{
+            backgroundColor: '#fff',
+            borderTopLeftRadius: 12,
+            borderTopRightRadius: 12,
+          }}
+          withHandle
+          panGestureEnabled
+          scrollViewProps={{ keyboardShouldPersistTaps: 'handled', nestedScrollEnabled: true }}
+          snapPoint={680}
+        >
+          {selectedCandidateId ? (
+            <CandidateProfileContent
+              candidateId={selectedCandidateId}
+              nim={nim}
+              isElectionOpen={isElectionOpen}
+              onVoted={() => {
+                modalRef.current?.close?.()
+                setTimeout(() => setSuccessVisible(true), 260)
+              }}
+              disableScroll
+            />
+          ) : null}
+        </ModalizeComp>
+      ) : (
+        <Modal
+          visible={!!selectedCandidateId}
+          animationType="slide"
+          onRequestClose={() => setSelectedCandidateId(null)}
+        >
           <View style={{ flex: 1 }}>
-            {selectedCandidateId && (
+            {selectedCandidateId ? (
               <CandidateProfileContent
                 candidateId={selectedCandidateId}
                 nim={nim || nimFromRoute}
@@ -303,31 +316,12 @@ export default function HomeScreen({ route }: Props) {
                 }}
                 onClose={() => setSelectedCandidateId(null)}
               />
-            )}
+            ) : null}
           </View>
         </Modal>
-      ) : ModalizeComp ? (
-        <ModalizeComp
-          ref={modalRef}
-          onClosed={() => setSelectedCandidateId(null)}
-          modalStyle={{ backgroundColor: '#fff', borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
-          withHandle
-        >
-          {selectedCandidateId && (
-            <CandidateProfileContent
-              candidateId={selectedCandidateId}
-              nim={nim}
-              isElectionOpen={isElectionOpen}
-              onVoted={() => {
-                modalRef.current?.close?.()
-                setTimeout(() => setSuccessVisible(true), 260)
-              }}
-            />
-          )}
-        </ModalizeComp>
-      ) : null}
+      )}
 
-      {/* Vote Success Popup */}
+      {/* Success popup */}
       <Modal
         visible={successVisible}
         transparent
@@ -370,81 +364,71 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   loadingText: { textAlign: 'center', marginTop: 40 },
   topRow: { paddingHorizontal: 20, paddingVertical: 18 },
-  avatar: { width: 56, height: 56, borderRadius: 28 },
+  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#E5E7EB' },
   username: { fontSize: 16, fontWeight: '700', color: '#111827' },
   roleText: { color: '#6B7280', fontSize: 12 },
-
   countCard: {
     marginHorizontal: 20,
     backgroundColor: '#6D28D9',
     borderRadius: 12,
     padding: 16,
     marginBottom: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
   },
-
   countCardClosed: {
     backgroundColor: '#E5E7EB',
+    opacity: 0.95,
   },
-
   countTitle: { color: '#fff', fontSize: 14, marginBottom: 10 },
   countTitleClosed: { color: '#374151' },
-  closedLabel: { color: '#FE2D2D', fontWeight: '700', textAlign: 'center', marginBottom: 6 },
-
-  countRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  countBlock: { flex: 1, alignItems: 'center' },
-
+  closedLabel: {
+    color: '#FE2D2D',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  countRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  countBlock: { alignItems: 'center', flex: 1 },
   countNumber: { color: '#fff', fontSize: 22, fontWeight: '700' },
   countNumberClosed: { color: '#6B7280' },
-
   countLabel: { color: '#EDE9FE', marginTop: 4, fontSize: 12 },
   countLabelClosed: { color: '#9CA3AF' },
-
-  separator: { width: 1, height: 48, backgroundColor: 'rgba(255,255,255,0.15)' },
-
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 20,
-    marginBottom: 10,
-  },
-
+  separator: { width: 1, backgroundColor: 'rgba(255,255,255,0.15)', height: 48, marginHorizontal: 6 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', marginLeft: 20, marginBottom: 10, color: '#111827' },
   searchWrapper: { paddingHorizontal: 20, marginBottom: 12 },
-
   searchInput: {
     backgroundColor: '#F3F4F6',
     borderRadius: 10,
     padding: 12,
     fontSize: 14,
   },
-
   card: {
     backgroundColor: '#fff',
     marginHorizontal: 20,
     borderRadius: 10,
     padding: 13,
+    elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 4,
+    marginBottom: 14,
   },
-
-  candidateImage: { width: 76, height: 76, borderRadius: 8 },
-
+  candidateImage: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#E5E7EB' },
   candidateName: { fontWeight: '700', fontSize: 15, color: '#111827' },
   candidateSub: { color: '#6B7280', marginTop: 4 },
-
   profileFullWidth: {
     marginTop: 12,
     paddingVertical: 12,
     alignItems: 'center',
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: '#6D28D9',
-    borderRadius: 10,
+    width: '100%',
   },
-
   profileFullWidthText: { color: '#6D28D9', fontWeight: '700' },
-
   bottomNav: {
-    position: 'absolute',
     left: 12,
     right: 12,
     bottom: 16,
@@ -452,13 +436,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 16,
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: 12,
+    elevation: 6,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
+    // position will be set inline (fixed on web, absolute on native)
   },
-
   navItem: { alignItems: 'center', justifyContent: 'center' },
   navText: { fontSize: 13, color: '#9CA3AF', fontWeight: '700' },
 })
@@ -477,20 +463,29 @@ const popupStyles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 22,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   title: {
     fontSize: 20,
     fontWeight: '700',
     color: '#4F46E5',
     marginBottom: 8,
+    textAlign: 'center',
   },
   message: {
     color: '#374151',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 18,
+    lineHeight: 20,
   },
-  buttonsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  buttonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   btn: {
     flex: 1,
     paddingVertical: 12,
@@ -501,8 +496,18 @@ const popupStyles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#6D28D9',
     marginRight: 8,
+    backgroundColor: '#fff',
   },
-  btnOutlineText: { color: '#6D28D9', fontWeight: '700' },
-  btnPrimary: { backgroundColor: '#4F46E5', marginLeft: 8 },
-  btnPrimaryText: { color: '#fff', fontWeight: '700' },
+  btnOutlineText: {
+    color: '#6D28D9',
+    fontWeight: '700',
+  },
+  btnPrimary: {
+    backgroundColor: '#4F46E5',
+    marginLeft: 8,
+  },
+  btnPrimaryText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
 })
