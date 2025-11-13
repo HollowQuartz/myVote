@@ -1,7 +1,17 @@
+// src/screens/OnboardingScreen.tsx
 import React, { useRef, useState } from 'react'
-import { View, Text, Image, StyleSheet, TouchableOpacity, FlatList, Dimensions } from 'react-native'
-
-const { width } = Dimensions.get('window')
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  useWindowDimensions,
+  Platform,
+  AccessibilityInfo,
+} from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 const slides = [
   {
@@ -26,11 +36,17 @@ const slides = [
 
 export default function OnboardingScreen({ navigation }: any) {
   const [currentIndex, setCurrentIndex] = useState(0)
-  const flatListRef = useRef<FlatList>(null)
+  const flatListRef = useRef<FlatList<any> | null>(null)
+  const { width } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
 
   const handleNext = () => {
     if (currentIndex < slides.length - 1) {
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 })
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })
+      // move focus for accessibility
+      if (Platform.OS === 'web') {
+        AccessibilityInfo.setAccessibilityFocus && AccessibilityInfo.setAccessibilityFocus(0 as any)
+      }
     } else {
       navigation.replace('NIM')
     }
@@ -40,31 +56,43 @@ export default function OnboardingScreen({ navigation }: any) {
     navigation.replace('NIM')
   }
 
+  const onScroll = (e: any) => {
+    const index = Math.round(e.nativeEvent.contentOffset.x / width)
+    setCurrentIndex(index)
+  }
+
+  const renderSlide = ({ item }: { item: typeof slides[number] }) => (
+    <View style={[styles.slide, { width }]}>
+      <Image source={item.image} style={[styles.image, { width: width * 0.8, height: width * 0.8 }]} resizeMode="contain" />
+      <Text style={styles.title}>{item.title}</Text>
+      <Text style={styles.description}>{item.description}</Text>
+    </View>
+  )
+
   return (
     <View style={styles.container}>
-      {/* Skip button */}
-      <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+      {/* Skip button (use safe area top offset) */}
+      <TouchableOpacity
+        style={[styles.skipButton, { top: insets.top + 12 }]}
+        onPress={handleSkip}
+        accessibilityRole="button"
+        accessibilityLabel="Lewati onboarding"
+      >
         <Text style={styles.skipText}>Skip</Text>
       </TouchableOpacity>
 
-      {/* FlatList of slides */}
       <FlatList
         ref={flatListRef}
         data={slides}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        onScroll={(e) => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / width)
-          setCurrentIndex(index)
-        }}
-        renderItem={({ item }) => (
-          <View style={[styles.slide, { width }]}>
-            <Image source={item.image} style={styles.image} resizeMode="contain" />
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.description}>{item.description}</Text>
-          </View>
-        )}
+        onScroll={onScroll}
+        keyExtractor={(item) => item.id}
+        renderItem={renderSlide}
+        getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+        initialNumToRender={1}
+        windowSize={3}
       />
 
       {/* Pagination */}
@@ -73,13 +101,20 @@ export default function OnboardingScreen({ navigation }: any) {
           <View
             key={index}
             style={[styles.dot, currentIndex === index && styles.activeDot]}
+            accessibilityElementsHidden={currentIndex !== index}
+            importantForAccessibility={currentIndex === index ? 'yes' : 'no'}
           />
         ))}
       </View>
 
       {/* Next button */}
-      <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-        <Text style={styles.nextText}>Next</Text>
+      <TouchableOpacity
+        style={styles.nextButton}
+        onPress={handleNext}
+        accessibilityRole="button"
+        accessibilityLabel="Lanjut"
+      >
+        <Text style={styles.nextText}>{currentIndex < slides.length - 1 ? 'Next' : 'Mulai'}</Text>
       </TouchableOpacity>
     </View>
   )
@@ -93,7 +128,6 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     position: 'absolute',
-    top: 60,
     right: 25,
     zIndex: 2,
   },
@@ -108,8 +142,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   image: {
-    width: width * 0.8,
-    height: width * 0.8,
+    // width/height set dynamically in render to use current width
   },
   title: {
     fontSize: 22,
@@ -129,6 +162,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginBottom: 10,
+    marginTop: 8,
   },
   dot: {
     width: 8,

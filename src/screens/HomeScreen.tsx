@@ -17,17 +17,17 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../navigation/AppNavigator'
 import { getCandidates, getSettings, subscribeToSettings } from '../lib/api'
 import { useNavigation } from '@react-navigation/native'
-import { Modalize } from 'react-native-modalize'
+// NOTE: do NOT import Modalize at top-level (breaks web). We'll lazy-require it only on native.
 import CandidateProfileContent from '../components/CandidateProfileContent'
 import { useUser } from '../contexts/UserContext'
+import { isWeb } from '../lib/platform'
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>
 
 export default function HomeScreen({ route }: Props) {
   const nimFromRoute = route?.params?.nim as string | undefined
 
-  
-const { nim, setNim } = useUser()
+  const { nim, setNim } = useUser()
   const [candidates, setCandidates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -36,7 +36,8 @@ const { nim, setNim } = useUser()
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
 
   const navigation = useNavigation<any>()
-  const modalRef = useRef<Modalize>(null)
+  // modalRef is only used when Modalize is available (native). Keep it as any.
+  const modalRef = useRef<any>(null)
   const insets = useSafeAreaInsets()
   const BOTTOM_NAV_HEIGHT = 64
   const EXTRA_GAP = 12
@@ -44,6 +45,17 @@ const { nim, setNim } = useUser()
 
   // success popup state
   const [successVisible, setSuccessVisible] = useState(false)
+
+  // --- NEW: sync route nim into context if provided (useful when navigating from link)
+  useEffect(() => {
+    if (nimFromRoute && nimFromRoute !== nim) {
+      try {
+        setNim(nimFromRoute)
+      } catch (e) {
+        // ignore if context setter missing
+      }
+    }
+  }, [nimFromRoute, nim, setNim])
 
   useEffect(() => {
     let mounted = true
@@ -115,9 +127,17 @@ const { nim, setNim } = useUser()
 
   const countdown = computeCountdown()
 
+  // open profile: set selected id and open the native sheet if available
   const openProfile = (id: string) => {
     setSelectedCandidateId(id)
-    modalRef.current?.open()
+    if (!isWeb) {
+      // lazy-require Modalize only on native if not already loaded
+      try {
+        modalRef.current?.open?.()
+      } catch (e) {
+        // ignore — we'll fallback to modal for web or on native failures
+      }
+    }
   }
 
   if (loading) {
@@ -128,6 +148,17 @@ const { nim, setNim } = useUser()
     )
   }
 
+  // Attempt to lazy-load Modalize component only on native in render-time.
+  let ModalizeComp: any = null
+  if (!isWeb) {
+    try {
+      const maybe = require('react-native-modalize')
+      ModalizeComp = maybe?.Modalize ?? maybe?.default ?? null
+    } catch (e) {
+      ModalizeComp = null
+    }
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={{ paddingBottom: contentBottomPadding }}>
@@ -136,7 +167,8 @@ const { nim, setNim } = useUser()
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Image source={require('../../assets/logo1.png')} style={styles.avatar} />
             <View style={{ marginLeft: 12 }}>
-              <Text style={styles.username}>{nim ? nim : 'Pemilih'}</Text>
+              {/* show nim from context, fallback to route param, else 'Pemilih' */}
+              <Text style={styles.username}>{nim || nimFromRoute ? (nim || nimFromRoute) : 'Pemilih'}</Text>
               <Text style={styles.roleText}>Pemilih</Text>
             </View>
           </View>
@@ -251,35 +283,61 @@ const { nim, setNim } = useUser()
         </TouchableOpacity>
       </View>
 
-      {/* Modalize Bottom Sheet for Candidate Profile */}
-      <Modalize
-        ref={modalRef}
-        onClosed={() => setSelectedCandidateId(null)}
-        modalStyle={{
-          backgroundColor: '#fff',
-          borderTopLeftRadius: 12,
-          borderTopRightRadius: 12,
-        }}
-        withHandle
-        panGestureEnabled
-        scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
-        snapPoint={680}
-      >
-        {selectedCandidateId ? (
-          <CandidateProfileContent
-            candidateId={selectedCandidateId}
-            nim={nim}
-            isElectionOpen={isElectionOpen}
-            onVoted={() => {
-              // close the sheet, then show the pretty success popup on Home
-              modalRef.current?.close()
-              setTimeout(() => {
-                setSuccessVisible(true)
-              }, 260)
-            }}
-          />
-        ) : null}
-      </Modalize>
+      {/* Native bottom sheet (Modalize) if available and running on native */}
+      {!isWeb && ModalizeComp ? (
+        <ModalizeComp
+          ref={modalRef}
+          onClosed={() => setSelectedCandidateId(null)}
+          modalStyle={{
+            backgroundColor: '#fff',
+            borderTopLeftRadius: 12,
+            borderTopRightRadius: 12,
+          }}
+          withHandle
+          panGestureEnabled
+          scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
+          snapPoint={680}
+        >
+          {selectedCandidateId ? (
+            <CandidateProfileContent
+              candidateId={selectedCandidateId}
+              nim={nim}
+              isElectionOpen={isElectionOpen}
+              onVoted={() => {
+                // close the sheet, then show the pretty success popup on Home
+                modalRef.current?.close?.()
+                setTimeout(() => {
+                  setSuccessVisible(true)
+                }, 260)
+              }}
+            />
+          ) : null}
+        </ModalizeComp>
+      ) : (
+        // Web fallback: use a Modal so web bundler never tries to import Modalize
+        <Modal
+          visible={!!selectedCandidateId}
+          animationType="slide"
+          onRequestClose={() => setSelectedCandidateId(null)}
+        >
+          <View style={{ flex: 1 }}>
+            {selectedCandidateId ? (
+              <CandidateProfileContent
+                candidateId={selectedCandidateId}
+                nim={nim || nimFromRoute}
+                isElectionOpen={isElectionOpen}
+                // onVoted closes and shows success (same as native)
+                onVoted={() => {
+                  setSelectedCandidateId(null)
+                  setTimeout(() => setSuccessVisible(true), 260)
+                }}
+                // NEW: allow CandidateProfileContent to request close (back button)
+                onClose={() => setSelectedCandidateId(null)}
+              />
+            ) : null}
+          </View>
+        </Modal>
+      )}
 
       {/* Pretty Success Popup (appears above Home) */}
       <Modal

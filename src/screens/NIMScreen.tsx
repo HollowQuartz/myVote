@@ -1,3 +1,4 @@
+// src/screens/NIMScreen.tsx
 import React, { useState, useEffect } from 'react'
 import {
   View,
@@ -12,18 +13,19 @@ import {
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { useUser } from '../contexts/UserContext' // <- adjust path if your file is in ../contexts
+import { isWeb } from '../lib/platform'
 
 export default function NIMScreen() {
   const navigation = useNavigation<any>()
-  const { nim: nimFromCtx, setNim: setNimInCtx } = useUser()
+  const { nim: nimFromCtx, setNim } = useUser()
 
   // local input state, initialized from context if available
-  const [nim, setNim] = useState<string>(nimFromCtx ?? '')
+  const [nim, setNimLocal] = useState<string>(nimFromCtx ?? '')
 
   useEffect(() => {
     // keep local input synced if context nim changes externally
     if (nimFromCtx && nimFromCtx !== nim) {
-      setNim(nimFromCtx)
+      setNimLocal(nimFromCtx)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nimFromCtx])
@@ -37,19 +39,22 @@ export default function NIMScreen() {
     }
 
     // Save NIM to global context
-    setNimInCtx(trimmed)
+    setNim(trimmed)
 
     // Navigate to Home — context will provide the nim for Home
-    navigation.navigate('Home', { nim: trimmed })
+    navigation.navigate('Home')
   }
 
   const isValid = nim.trim().length === 12
 
+  // Use KeyboardAvoidingView on native iOS, otherwise use a simple View on web/Android
+  const Wrapper: any = isWeb ? View : KeyboardAvoidingView
+  const wrapperProps = isWeb
+    ? { style: styles.container }
+    : { behavior: Platform.OS === 'ios' ? 'padding' : undefined, style: styles.container }
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
-    >
+    <Wrapper {...wrapperProps}>
       <View style={styles.inner}>
         {/* Logo */}
         <Image source={require('../../assets/logo1.png')} style={styles.logo} />
@@ -61,12 +66,19 @@ export default function NIMScreen() {
         <View style={styles.inputWrapper}>
           <TextInput
             value={nim}
-            onChangeText={setNim}
+            onChangeText={setNimLocal}
             placeholder="Masukkan NIM Anda"
             placeholderTextColor="#9CA3AF"
             keyboardType="numeric"
             maxLength={12}
             style={styles.input}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              if (isValid) handleContinue()
+            }}
+            // center input for web too
+            textContentType="none"
+            autoComplete="off"
           />
         </View>
 
@@ -79,7 +91,7 @@ export default function NIMScreen() {
           <Text style={styles.buttonText}>Masuk</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </Wrapper>
   )
 }
 

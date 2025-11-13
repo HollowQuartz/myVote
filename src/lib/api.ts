@@ -1,3 +1,4 @@
+// src/lib/api.ts
 import { supabase } from './supabase'
 
 // 🧠 Fetch all candidates
@@ -21,17 +22,61 @@ export const getCandidateById = async (id: string) => {
   return data
 }
 
-// 🗳 Submit a vote
+// 🗳 Submit a vote (improved: logs and robust duplicate detection)
 export const castVote = async (nim: string, candidateId: string) => {
-  const { error } = await supabase.from('votes').insert([{ nim, candidate_id: candidateId }])
-  if (error) {
-    // Handle duplicate votes gracefully
-    if (error.message.includes('duplicate key')) {
+  const normalizedNim = String(nim).trim()
+
+  try {
+    // Attempt insert
+    const resp = await supabase
+      .from('votes')
+      .insert([{ nim: normalizedNim, candidate_id: candidateId }])
+      .select()
+
+    // Normalize client response shape
+    const data = (resp as any)?.data ?? (resp as any)
+    const error = (resp as any)?.error ?? (resp as any)?.error ?? null
+
+    if (error) {
+      // Log full error for debugging
+      // eslint-disable-next-line no-console
+      console.error('castVote SUPABASE ERROR RAW:', JSON.stringify(error, null, 2))
+
+      const msg = String(error?.message ?? '').toLowerCase()
+      const code = String(error?.code ?? '')
+
+      if (
+        code === '23505' ||
+        msg.includes('duplicate') ||
+        msg.includes('unique') ||
+        msg.includes('already')
+      ) {
+        throw new Error('NIM ini sudah digunakan untuk memilih.')
+      }
+
+      // fallback: throw original error
+      throw error
+    }
+
+    return data
+  } catch (err: any) {
+    // eslint-disable-next-line no-console
+    console.error('castVote CATCH:', err)
+
+    const msg = String(err?.message ?? '').toLowerCase()
+    const code = String(err?.code ?? '')
+
+    if (
+      code === '23505' ||
+      msg.includes('duplicate') ||
+      msg.includes('unique') ||
+      msg.includes('already')
+    ) {
       throw new Error('NIM ini sudah digunakan untuk memilih.')
     }
-    throw error
+
+    throw err
   }
-  return true
 }
 
 // 📊 Real-time subscription (optional)
@@ -60,12 +105,11 @@ export const getSettings = async () => {
     .single()
 
   if (error) {
-    // If no row found, return null instead of throwing
     if (error.details?.includes('No rows')) return null
     throw error
   }
 
-  return data // { id: 1, election_open: true/false, election_end_at: '2025-06-01T12:00:00Z', ... }
+  return data
 }
 
 // 🔄 Realtime subscription to settings changes
@@ -76,10 +120,8 @@ export const subscribeToSettings = (callback: (row: any) => void) => {
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'settings', filter: 'id=eq.1' },
       (payload) => {
-        // callback receives the new row (record)
         callback(payload.record)
       }
     )
     .subscribe()
 }
-

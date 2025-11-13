@@ -1,3 +1,4 @@
+// src/screens/ResultsScreen.tsx
 import React, { useEffect, useState, useMemo } from 'react'
 import {
   View,
@@ -5,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  Alert,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { getCandidates, getVoteCounts, subscribeToVotes } from '../lib/api'
@@ -13,12 +15,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../navigation/AppNavigator'
 import useBackToHome from '../hooks/useBackToHome'
 
-
 export default function ResultsScreen() {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'Results'>>()
-    useBackToHome(navigation)
+  useBackToHome(navigation)
 
   const loadResults = async () => {
     try {
@@ -30,7 +31,7 @@ export default function ResultsScreen() {
         counts[v.candidate_id] = (counts[v.candidate_id] || 0) + 1
       })
 
-      const combined = candidates.map((c: any) => ({
+      const combined = (candidates || []).map((c: any) => ({
         id: c.id,
         name: `${c.name_president} & ${c.name_vice}`,
         votes: counts[c.id] || 0,
@@ -39,18 +40,38 @@ export default function ResultsScreen() {
       setData(combined)
       setLoading(false)
     } catch (error) {
-      console.error(error)
+      console.error('Error loading results:', error)
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     loadResults()
-    const sub = subscribeToVotes(() => loadResults())
-    return () => sub.unsubscribe()
+    let sub: any = null
+    try {
+      sub = subscribeToVotes(() => {
+        // refresh results on vote updates
+        try {
+          loadResults()
+        } catch (e) {
+          console.error('Error refreshing results after vote update', e)
+        }
+      })
+    } catch (e) {
+      console.warn('subscribeToVotes failed', e)
+    }
+
+    return () => {
+      try {
+        if (sub && typeof sub.unsubscribe === 'function') sub.unsubscribe()
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    }
   }, [])
 
   const totalVotes = useMemo(
-    () => data.reduce((sum, c) => sum + c.votes, 0),
+    () => data.reduce((sum, c) => sum + (c.votes || 0), 0),
     [data]
   )
 
@@ -81,7 +102,6 @@ export default function ResultsScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-
         {/* Total Suara */}
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>Total Suara Terhitung</Text>
@@ -146,7 +166,7 @@ export default function ResultsScreen() {
         <TouchableOpacity
           style={styles.navItem}
           onPress={() =>
-            alert('Belum tersedia: Favorit belum diimplementasikan.')
+            Alert.alert('Belum tersedia', 'Favorit belum diimplementasikan.')
           }
         >
           <Text style={styles.navText}>Favorit</Text>
