@@ -227,7 +227,7 @@ export default function HomeScreen({ route }: Props) {
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
-          scrollEnabled={false}
+          scrollEnabled={true}
           renderItem={({ item }) => (
             <View style={styles.card}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
