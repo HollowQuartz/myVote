@@ -18,37 +18,35 @@ const slides = [
     id: '1',
     image: require('../../assets/onboard1.png'),
     title: 'Selamat datang di myVote',
-    description:
-      'Aplikasi voting online untuk memilih calon presiden dan wakil presiden mahasiswa PJ.',
+    description: 'Aplikasi voting online untuk memilih calon presiden dan wakil presiden mahasiswa PJ.',
   },
   {
     id: '2',
     image: require('../../assets/onboard2.png'),
     title: 'Tetap Update',
-    description:
-      'Ikuti kampanye tiap-tiap kandidat untuk mengetahui visi dan misinya.',
+    description: 'Ikuti kampanye tiap-tiap kandidat untuk mengetahui visi dan misinya.',
   },
   {
     id: '3',
     image: require('../../assets/onboard3.png'),
     title: 'Buat Pilihanmu',
-    description:
-      'Pilih kandidat favoritmu dan ikuti perkembangannya secara langsung.',
+    description: 'Pilih kandidat favoritmu dan ikuti perkembangannya secara langsung.',
   },
 ]
 
 export default function OnboardingScreen({ navigation }: any) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const flatListRef = useRef<FlatList<any> | null>(null)
-  const { width, height } = useWindowDimensions()
+  const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
 
-  const isDesktop = width >= 900
+  // breakpoint for desktop layout
+  const isDesktop = width >= 800
 
   const handleNext = () => {
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })
-      // move focus for accessibility on web
+      // accessibility: move focus to the next slide title on web
       if (Platform.OS === 'web') {
         AccessibilityInfo.setAccessibilityFocus && AccessibilityInfo.setAccessibilityFocus(0 as any)
       }
@@ -67,74 +65,78 @@ export default function OnboardingScreen({ navigation }: any) {
   }
 
   const renderSlide = ({ item }: { item: typeof slides[number] }) => {
-    // Determine image sizing: desktop uses a max width box, mobile uses width * 0.8
-    const imageBoxSize = isDesktop ? Math.min(560, width * 0.45) : width * 0.8
-    return (
-      <View style={[styles.slide, { width }]}>
-        <View style={[styles.slideInner, isDesktop && styles.slideInnerDesktop]}>
-          <Image
-            source={item.image}
-            style={[
-              styles.image,
-              { width: imageBoxSize, height: imageBoxSize },
-            ]}
-            resizeMode="contain"
-          />
-          <View style={[styles.textWrap, isDesktop && styles.textWrapDesktop]}>
-            <Text style={[styles.title, isDesktop && styles.titleDesktop]}>{item.title}</Text>
-            <Text style={[styles.description, isDesktop && styles.descriptionDesktop]}>
-              {item.description}
-            </Text>
+    if (isDesktop) {
+      // two-column layout
+      return (
+        <View style={[styles.desktopSlideContainer, { width }]}>
+          <View style={styles.desktopInner}>
+            <View style={styles.imageWrapper}>
+              <Image
+                source={item.image}
+                style={styles.desktopImage}
+                resizeMode="contain"
+                accessible
+                accessibilityLabel={item.title}
+              />
+            </View>
+
+            <View style={styles.textWrapper}>
+              <Text style={styles.desktopTitle}>{item.title}</Text>
+              <Text style={styles.desktopDescription}>{item.description}</Text>
+            </View>
           </View>
         </View>
+      )
+    }
+
+    // mobile layout (stacked)
+    return (
+      <View style={[styles.slide, { width }]}>
+        <Image
+          source={item.image}
+          style={[styles.image, { width: width * 0.8, height: width * 0.8 }]}
+          resizeMode="contain"
+          accessible
+          accessibilityLabel={item.title}
+        />
+        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.description}>{item.description}</Text>
       </View>
     )
   }
 
   return (
     <View style={styles.container}>
-      {/* Skip button (use safe area top offset). On desktop keep it spaced nicely */}
+      {/* Skip button (use safe area top offset) */}
       <TouchableOpacity
-        style={[
-          styles.skipButton,
-          { top: insets.top + (isDesktop ? 24 : 12), right: isDesktop ? 40 : 20 },
-          isDesktop && styles.skipButtonDesktop,
-        ]}
+        style={[styles.skipButton, { top: insets.top + 12 }]}
         onPress={handleSkip}
         accessibilityRole="button"
         accessibilityLabel="Lewati onboarding"
       >
-        <Text style={[styles.skipText, isDesktop && styles.skipTextDesktop]}>Skip</Text>
+        <Text style={styles.skipText}>Skip</Text>
       </TouchableOpacity>
 
-      <View style={[styles.centerWrap, isDesktop && styles.centerWrapDesktop]}>
-        <FlatList
-          ref={flatListRef}
-          data={slides}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={onScroll}
-          keyExtractor={(item) => item.id}
-          renderItem={renderSlide}
-          getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-          initialNumToRender={1}
-          windowSize={3}
-          // on web the FlatList content can be large; keep performance settings sensible
-        />
-      </View>
+      <FlatList
+        ref={flatListRef}
+        data={slides}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onScroll={onScroll}
+        keyExtractor={(item) => item.id}
+        renderItem={renderSlide}
+        getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+        initialNumToRender={1}
+        windowSize={3}
+      />
 
       {/* Pagination */}
       <View style={[styles.pagination, isDesktop && styles.paginationDesktop]}>
         {slides.map((_, index) => (
           <View
             key={index}
-            style={[
-              styles.dot,
-              currentIndex === index && styles.activeDot,
-              isDesktop && styles.dotDesktop,
-              isDesktop && currentIndex === index && styles.activeDotDesktop,
-            ]}
+            style={[styles.dot, currentIndex === index && styles.activeDot]}
             accessibilityElementsHidden={currentIndex !== index}
             importantForAccessibility={currentIndex === index ? 'yes' : 'no'}
           />
@@ -162,103 +164,89 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     justifyContent: 'center',
   },
-
-  // Centered container that keeps content readable on very wide screens
-  centerWrap: {
-    flex: 1,
-  },
-  centerWrapDesktop: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-    maxWidth: 1200,
-    alignSelf: 'center',
-  },
-
   skipButton: {
     position: 'absolute',
-    zIndex: 20,
-  },
-  skipButtonDesktop: {
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E6E6F8',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    right: 25,
+    zIndex: 2,
   },
   skipText: {
     color: '#4F46E5',
     fontSize: 16,
     fontWeight: '600',
   },
-  skipTextDesktop: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
 
+  /* Mobile slide */
   slide: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
-  slideInner: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  slideInnerDesktop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 40,
-  },
-
   image: {
-    // dimensions set dynamically in renderSlide
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC', // subtle neutral bg
+    // width/height set dynamically in render to use current width
   },
-
-  textWrap: {
-    marginTop: 18,
-    alignItems: 'center',
-    paddingHorizontal: 10,
-  },
-  textWrapDesktop: {
-    marginTop: 0,
-    alignItems: 'flex-start',
-    maxWidth: 560,
-    paddingHorizontal: 0,
-  },
-
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     textAlign: 'center',
+    marginTop: 20,
     color: '#111827',
   },
-  titleDesktop: {
-    fontSize: 28,
-    textAlign: 'left',
-  },
-
   description: {
     textAlign: 'center',
     color: '#6B7280',
     marginTop: 10,
     fontSize: 15,
     paddingHorizontal: 30,
-    lineHeight: 22,
-  },
-  descriptionDesktop: {
-    textAlign: 'left',
-    paddingHorizontal: 0,
-    fontSize: 16,
-    lineHeight: 24,
   },
 
+  /* Desktop slide */
+  desktopSlideContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  desktopInner: {
+    width: '92%',
+    maxWidth: 1100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 28,
+    boxShadow: '0 6px 18px rgba(0,0,0,0.08)', // works on web via react-native-web
+  },
+  imageWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingRight: 20,
+  },
+  desktopImage: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: 520,
+    aspectRatio: 1,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  textWrapper: {
+    flex: 1,
+    paddingLeft: 20,
+    justifyContent: 'center',
+  },
+  desktopTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  desktopDescription: {
+    fontSize: 18,
+    color: '#6B7280',
+    lineHeight: 26,
+  },
+
+  /* pagination */
   pagination: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -266,34 +254,21 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   paginationDesktop: {
-    marginBottom: 24,
+    marginTop: 18,
+    marginBottom: 22,
   },
-
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#D1D5DB',
-    marginHorizontal: 6,
-  },
-  dotDesktop: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginHorizontal: 8,
+    marginHorizontal: 5,
   },
   activeDot: {
     backgroundColor: '#4F46E5',
-    transform: [{ scale: 1.0 }],
-  },
-  activeDotDesktop: {
-    backgroundColor: '#4F46E5',
-    transform: [{ scale: 1.05 }],
-    shadowColor: '#4F46E5',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
   },
 
+  /* Next button */
   nextButton: {
     backgroundColor: '#4F46E5',
     paddingVertical: 14,
@@ -302,12 +277,10 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   nextButtonDesktop: {
-    width: 320,
+    width: 260,
     alignSelf: 'center',
-    marginBottom: 48,
-    paddingVertical: 16,
+    marginBottom: 40,
   },
-
   nextText: {
     textAlign: 'center',
     color: '#fff',
@@ -315,7 +288,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   nextTextDesktop: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
   },
 })
