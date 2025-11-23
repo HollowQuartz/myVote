@@ -8,7 +8,6 @@ import {
   ScrollView,
   useWindowDimensions,
   Linking,
-  Platform,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -16,27 +15,12 @@ import { getSettings, subscribeToSettings } from '../lib/api' // existing helper
 
 type FAQItem = { id: string; q: string; a: string }
 
+// You can edit the FAQ content here
 const FAQ_DEFAULT: FAQItem[] = [
-  {
-    id: '1',
-    q: 'Bagaimana cara memilih?',
-    a: 'Masukkan NIM (12 digit) pada layar NIM, lalu pilih kandidat favorit dan konfirmasi. Setelah konfirmasi, suara tidak bisa diubah.',
-  },
-  {
-    id: '2',
-    q: 'Apakah suara saya anonim?',
-    a: 'Saat ini admin dapat melihat pasangan NIM -> kandidat (sesuai pengaturan Anda). Jika ingin anonimitas penuh, ubah kebijakan penyimpanan di database.',
-  },
-  {
-    id: '3',
-    q: 'Saya mendapatkan pesan error “NIM sudah digunakan”. Apa artinya?',
-    a: 'Itu berarti NIM yang Anda masukkan sudah digunakan untuk memilih. Setiap NIM hanya boleh memilih sekali.',
-  },
-  {
-    id: '4',
-    q: 'Bagaimana jika ada masalah teknis?',
-    a: 'Hubungi admin lewat tombol email di halaman ini atau kirim pesan kepada tim IT kampus. Sertakan screenshot bila perlu.',
-  },
+  { id: '1', q: 'Bagaimana cara memilih?', a: 'Masukkan NIM (12 digit) pada layar NIM, lalu pilih kandidat favorit dan konfirmasi. Setelah konfirmasi, suara tidak bisa diubah.' },
+  { id: '2', q: 'Apakah suara saya anonim?', a: 'Saat ini admin dapat melihat pasangan NIM -> kandidat. Jika Anda ingin anonimitas penuh, ubah kebijakan penyimpanan di database.' },
+  { id: '3', q: 'NIM sudah digunakan — apa artinya?', a: 'NIM tersebut sudah dipakai untuk memilih; setiap NIM hanya boleh memilih sekali.' },
+  { id: '4', q: 'Masalah teknis?', a: 'Hubungi admin lewat tombol email di halaman ini. Sertakan screenshot bila perlu.' },
 ]
 
 export default function InfoScreen() {
@@ -63,37 +47,22 @@ export default function InfoScreen() {
       setSettings(row)
     })
 
-    // init faqOpen (all closed)
     const init: Record<string, boolean> = {}
     FAQ_DEFAULT.forEach((f) => (init[f.id] = false))
     setFaqOpen(init)
 
     return () => {
       mounted = false
-      try {
-        sub.unsubscribe()
-      } catch {}
+      try { sub.unsubscribe() } catch {}
     }
   }, [])
 
-  const toggleFAQ = (id: string) => {
-    setFaqOpen((s) => ({ ...s, [id]: !s[id] }))
-  }
-
+  const toggleFAQ = (id: string) => setFaqOpen((s) => ({ ...s, [id]: !s[id] }))
   const openAdminEmail = () => {
     const email = settings?.admin_email ?? 'admin@example.com'
     Linking.openURL(`mailto:${email}`)
   }
-
-  const openResults = () => {
-    navigation.navigate('Results')
-  }
-
-  const goHome = () => navigation.navigate('Home')
-  const goFavorites = () => {
-    // placeholder
-    alert('Favorit belum tersedia')
-  }
+  const openResults = () => navigation.navigate('Results')
 
   const electionOpen = typeof settings?.election_open === 'boolean' ? settings.election_open : null
   const electionEnd = settings?.election_end_at ? new Date(settings.election_end_at) : null
@@ -102,7 +71,7 @@ export default function InfoScreen() {
     <SafeAreaView style={styles.outer}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={[styles.container, isDesktop && styles.containerDesktop]}>
-          {/* Left: Info */}
+          {/* Left column - Info */}
           <View style={[styles.left, isDesktop && styles.leftDesktop]}>
             <Text style={styles.title}>{settings?.election_title ?? 'Informasi Pemilu'}</Text>
 
@@ -126,31 +95,26 @@ export default function InfoScreen() {
 
               <View style={{ height: 12 }} />
 
-              <TouchableOpacity
-                style={[styles.btn, !electionOpen && styles.btnDisabled]}
-                onPress={openResults}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.btnText}>Lihat Hasil</Text>
-              </TouchableOpacity>
+              {/* IMPORTANT: only show "Lihat Hasil" when election is closed */}
+              {electionOpen === false ? (
+                <TouchableOpacity style={styles.btn} onPress={openResults} activeOpacity={0.85}>
+                  <Text style={styles.btnText}>Lihat Hasil</Text>
+                </TouchableOpacity>
+              ) : null}
 
-              <TouchableOpacity style={[styles.btnOutline]} onPress={openAdminEmail}>
+              <TouchableOpacity style={styles.btnOutline} onPress={openAdminEmail}>
                 <Text style={styles.btnOutlineText}>Hubungi Admin</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Right: FAQ / Bantuan */}
+          {/* Right column - FAQ */}
           <View style={[styles.right, isDesktop && styles.rightDesktop]}>
             <Text style={styles.sectionTitle}>Bantuan & FAQ</Text>
             <View style={styles.card}>
               {FAQ_DEFAULT.map((f) => (
                 <View key={f.id} style={{ marginBottom: 10 }}>
-                  <TouchableOpacity
-                    onPress={() => toggleFAQ(f.id)}
-                    style={styles.faqQuestion}
-                    activeOpacity={0.8}
-                  >
+                  <TouchableOpacity onPress={() => toggleFAQ(f.id)} style={styles.faqQuestion} activeOpacity={0.8}>
                     <Text style={styles.faqQText}>{f.q}</Text>
                     <Text style={styles.faqToggle}>{faqOpen[f.id] ? '−' : '+'}</Text>
                   </TouchableOpacity>
@@ -159,7 +123,6 @@ export default function InfoScreen() {
               ))}
             </View>
 
-            {/* Optional: quick tips */}
             <View style={[styles.card, { marginTop: 12 }]}>
               <Text style={styles.label}>Tips Singkat</Text>
               <Text style={styles.body}>• Periksa kembali NIM sebelum menekan konfirmasi.</Text>
@@ -169,17 +132,17 @@ export default function InfoScreen() {
         </View>
       </ScrollView>
 
-      {/* Bottom nav (responsive) */}
+      {/* Bottom nav (same appearance we will copy into Home) */}
       <View style={[styles.bottomNav, isDesktop ? styles.bottomNavDesktop : styles.bottomNavMobile]}>
-        <TouchableOpacity style={styles.navItem} onPress={goHome}>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
           <Text style={[styles.navText, { color: '#4F46E5' }]}>Home</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.navItem}>
+        <View style={styles.navItem}>
           <Text style={[styles.navText, { color: '#4F46E5', fontWeight: '800' }]}>Info</Text>
-        </TouchableOpacity>
+        </View>
 
-        <TouchableOpacity style={styles.navItem} onPress={goFavorites}>
+        <TouchableOpacity style={styles.navItem} onPress={() => alert('Favorit belum tersedia')}>
           <Text style={styles.navText}>Favorit</Text>
         </TouchableOpacity>
       </View>
@@ -189,20 +152,9 @@ export default function InfoScreen() {
 
 const styles = StyleSheet.create({
   outer: { flex: 1, backgroundColor: '#fff' },
-  scroll: { paddingBottom: 120 }, // leave space for bottom nav on mobile
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    gap: 16,
-  },
-  containerDesktop: {
-    maxWidth: 1100,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 24,
-    gap: 20,
-  },
+  scroll: { paddingBottom: 120 }, // reserve space for nav (mobile)
+  container: { paddingHorizontal: 20, paddingTop: 18, gap: 16 },
+  containerDesktop: { maxWidth: 1100, alignSelf: 'center', flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 24, gap: 20 },
 
   left: { flex: 1 },
   leftDesktop: { flex: 1.1 },
@@ -213,78 +165,28 @@ const styles = StyleSheet.create({
   title: { textAlign: 'center', fontSize: 22, fontWeight: '700', marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
 
-  card: {
-    backgroundColor: '#F8FAFF',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 6,
-  },
+  card: { backgroundColor: '#F8FAFF', borderRadius: 12, padding: 14, marginBottom: 6 },
 
   label: { fontSize: 13, color: '#6B7280', fontWeight: '700' },
   value: { fontSize: 18, color: '#111827', marginTop: 6, fontWeight: '700' },
   closedValue: { color: '#9CA3AF' },
   body: { color: '#374151', marginTop: 6, lineHeight: 20 },
 
-  btn: {
-    marginTop: 14,
-    backgroundColor: '#4F46E5',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
+  btn: { marginTop: 14, backgroundColor: '#4F46E5', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: '700' },
-  btnDisabled: { backgroundColor: '#9CA3AF' },
 
-  btnOutline: {
-    marginTop: 10,
-    borderWidth: 1.5,
-    borderColor: '#6D28D9',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
+  btnOutline: { marginTop: 10, borderWidth: 1.5, borderColor: '#6D28D9', paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#fff' },
   btnOutlineText: { color: '#6D28D9', fontWeight: '700' },
 
-  faqQuestion: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
+  faqQuestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
   faqQText: { fontWeight: '700', color: '#111827', flex: 1 },
   faqToggle: { fontSize: 20, color: '#6B7280', paddingHorizontal: 6 },
   faqA: { color: '#374151', marginTop: 6, lineHeight: 20 },
 
-  /* Bottom nav */
-  bottomNav: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 16,
-    height: 64,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 12,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-  },
-  bottomNavMobile: {
-    marginLeft: 12,
-    marginRight: 12,
-  },
-  bottomNavDesktop: {
-    // on desktop keep it centered and narrower
-    left: '50%',
-    transform: [{ translateX: -250 }],
-    width: 500,
-    bottom: 24,
-  },
+  bottomNav: { position: 'absolute', left: 12, right: 12, bottom: 16, height: 64, backgroundColor: '#fff', borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 12, elevation: 6, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8 },
+  bottomNavMobile: { marginLeft: 12, marginRight: 12 },
+  bottomNavDesktop: { left: '50%', transform: [{ translateX: -250 }], width: 500, bottom: 24 },
+
   navItem: { alignItems: 'center', justifyContent: 'center' },
   navText: { fontSize: 13, color: '#9CA3AF', fontWeight: '700' },
 })

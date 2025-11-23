@@ -3,29 +3,28 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
+  FlatList,
   Image,
   TouchableOpacity,
   TextInput,
   StyleSheet,
   ScrollView,
   Alert,
-  Modal,
-  Platform,
 } from 'react-native'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import type { NativeStackScreenProps } from '@react-navigation/native-stack'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../navigation/AppNavigator'
 import { getCandidates, getSettings, subscribeToSettings } from '../lib/api'
 import { useNavigation } from '@react-navigation/native'
+import { Modalize } from 'react-native-modalize'
 import CandidateProfileContent from '../components/CandidateProfileContent'
-import { useUser } from '../contexts/UserContext'
-import { isWeb } from '../lib/platform'
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>
 
 export default function HomeScreen({ route }: Props) {
   const nimFromRoute = route?.params?.nim as string | undefined
-  const { nim, setNim } = useUser()
+
+  const [nim, setNim] = useState<string>(nimFromRoute ?? '')
   const [candidates, setCandidates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -34,26 +33,7 @@ export default function HomeScreen({ route }: Props) {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
 
   const navigation = useNavigation<any>()
-  const modalRef = useRef<any>(null)
-  const insets = useSafeAreaInsets()
-
-  // adjust these if you change navbar height later
-  const BOTTOM_NAV_HEIGHT = 90 // make slightly larger to create safe space
-  const EXTRA_GAP = 12
-
-  // add extra padding on web/mobile browsers (some browsers overlay UI)
-  const EXTRA_WEB_PADDING = isWeb ? 160 : 0
-
-  const contentBottomPadding = insets.bottom + BOTTOM_NAV_HEIGHT + EXTRA_GAP + EXTRA_WEB_PADDING
-
-  const [successVisible, setSuccessVisible] = useState(false)
-
-  // sync route nim to context (if route passed nim)
-  useEffect(() => {
-    if (nimFromRoute && nimFromRoute !== nim) {
-      setNim(nimFromRoute)
-    }
-  }, [nimFromRoute])
+  const modalRef = useRef<Modalize>(null)
 
   useEffect(() => {
     let mounted = true
@@ -77,12 +57,11 @@ export default function HomeScreen({ route }: Props) {
     })
 
     const t = setInterval(() => setNowTick(Date.now()), 1000)
+
     return () => {
       mounted = false
       clearInterval(t)
-      try {
-        sub.unsubscribe()
-      } catch {}
+      try { sub.unsubscribe() } catch {}
     }
   }, [])
 
@@ -126,11 +105,7 @@ export default function HomeScreen({ route }: Props) {
 
   const openProfile = (id: string) => {
     setSelectedCandidateId(id)
-    if (!isWeb) {
-      try {
-        modalRef.current?.open?.()
-      } catch {}
-    }
+    modalRef.current?.open()
   }
 
   if (loading) {
@@ -141,32 +116,16 @@ export default function HomeScreen({ route }: Props) {
     )
   }
 
-  // lazy load Modalize for native only
-  let ModalizeComp: any = null
-  if (!isWeb) {
-    try {
-      const maybe = require('react-native-modalize')
-      ModalizeComp = maybe?.Modalize ?? maybe?.default ?? null
-    } catch (e) {
-      ModalizeComp = null
-    }
-  }
-
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: contentBottomPadding }}
-        nestedScrollEnabled
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
-      >
+      {/* scroll area reserves bottom space so nav doesn't overlap content */}
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Top */}
         <View style={styles.topRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Image source={require('../../assets/logo1.png')} style={styles.avatar} />
             <View style={{ marginLeft: 12 }}>
-              <Text style={styles.username}>{nim || nimFromRoute ? (nim || nimFromRoute) : 'Pemilih'}</Text>
+              <Text style={styles.username}>{nim ? nim : 'Pemilih'}</Text>
               <Text style={styles.roleText}>Pemilih</Text>
             </View>
           </View>
@@ -221,13 +180,16 @@ export default function HomeScreen({ route }: Props) {
           />
         </View>
 
-        {/* Candidate list rendered inside ScrollView to avoid nested scrolling issues on mobile web */}
-        <View style={{ paddingBottom: 8 }}>
-          {filtered.map((item) => (
-            <View key={item.id} style={styles.card}>
+        {/* Candidate list */}
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          renderItem={({ item }) => (
+            <View style={styles.card}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Image
-                  source={item.photo_url ? { uri: item.photo_url } : require('../../assets/logo1.png')}
+                  source={ item.photo_url ? { uri: item.photo_url } : require('../../assets/logo1.png') }
                   style={styles.candidateImage}
                 />
                 <View style={{ flex: 1, marginLeft: 12 }}>
@@ -236,126 +198,59 @@ export default function HomeScreen({ route }: Props) {
                   </Text>
                   <Text style={styles.candidateSub}>{item.faculty ?? 'Kampus'}</Text>
 
-                  <TouchableOpacity
-                    onPress={() => openProfile(item.id)}
-                    style={styles.profileFullWidth}
-                  >
+                  {/* Full-width profile button opens modal */}
+                  <TouchableOpacity onPress={() => openProfile(item.id)} style={styles.profileFullWidth}>
                     <Text style={styles.profileFullWidthText}>lihat profil</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
-          ))}
-        </View>
+          )}
+          ItemSeparatorComponent={() => <View style={{ height: 15 }} />}
+        />
       </ScrollView>
 
-      {/* Bottom nav: use fixed on web, absolute on native. Ensure it sits on top (zIndex). */}
-      <View style={[styles.bottomNav, isWeb ? { position: 'fixed' as const } : { position: 'absolute' }, { zIndex: 999 }]}>
-        <TouchableOpacity style={styles.navItem}>
+      {/* Bottom nav (keeps same look as InfoScreen) */}
+      <View style={[styles.bottomNav, styles.bottomNavMobileContainer]}>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
           <Text style={[styles.navText, { color: '#4F46E5' }]}>Home</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Info')}
-        >
-          <Text style={styles.navText}>Info</Text>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Info')}>
+          <Text style={[styles.navText]}>Info</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => Alert.alert('Belum tersedia', 'Favorit belum diimplementasikan')}
-        >
+        <TouchableOpacity style={styles.navItem} onPress={() => Alert.alert('Belum tersedia', 'Favorit belum diimplementasikan')}>
           <Text style={styles.navText}>Favorit</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Modals */}
-      {!isWeb && ModalizeComp ? (
-        <ModalizeComp
-          ref={modalRef}
-          onClosed={() => setSelectedCandidateId(null)}
-          modalStyle={{
-            backgroundColor: '#fff',
-            borderTopLeftRadius: 12,
-            borderTopRightRadius: 12,
-          }}
-          withHandle
-          panGestureEnabled
-          scrollViewProps={{ keyboardShouldPersistTaps: 'handled', nestedScrollEnabled: true }}
-          snapPoint={680}
-        >
-          {selectedCandidateId ? (
-            <CandidateProfileContent
-              candidateId={selectedCandidateId}
-              nim={nim}
-              isElectionOpen={isElectionOpen}
-              onVoted={() => {
-                modalRef.current?.close?.()
-                setTimeout(() => setSuccessVisible(true), 260)
-              }}
-              disableScroll
-            />
-          ) : null}
-        </ModalizeComp>
-      ) : (
-        <Modal
-          visible={!!selectedCandidateId}
-          animationType="slide"
-          onRequestClose={() => setSelectedCandidateId(null)}
-        >
-          <View style={{ flex: 1 }}>
-            {selectedCandidateId ? (
-              <CandidateProfileContent
-                candidateId={selectedCandidateId}
-                nim={nim || nimFromRoute}
-                isElectionOpen={isElectionOpen}
-                onVoted={() => {
-                  setSelectedCandidateId(null)
-                  setTimeout(() => setSuccessVisible(true), 260)
-                }}
-                onClose={() => setSelectedCandidateId(null)}
-              />
-            ) : null}
-          </View>
-        </Modal>
-      )}
-
-      {/* Success popup */}
-      <Modal
-        visible={successVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSuccessVisible(false)}
+      {/* Modalize Bottom Sheet for Candidate Profile */}
+      <Modalize
+        ref={modalRef}
+        onClosed={() => setSelectedCandidateId(null)}
+        modalStyle={{
+          backgroundColor: '#fff',
+          borderTopLeftRadius: 12,
+          borderTopRightRadius: 12,
+        }}
+        withHandle
+        panGestureEnabled
+        scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
+        snapPoint={680}
       >
-        <View style={popupStyles.overlay}>
-          <View style={popupStyles.box}>
-            <Text style={popupStyles.title}>Vote Berhasil 🎉</Text>
-            <Text style={popupStyles.message}>
-              Terima kasih! Suaramu sudah terekam dan tidak dapat diubah.
-            </Text>
-
-            <View style={popupStyles.buttonsRow}>
-              <TouchableOpacity
-                style={[popupStyles.btn, popupStyles.btnOutline]}
-                onPress={() => setSuccessVisible(false)}
-              >
-                <Text style={popupStyles.btnOutlineText}>Tutup</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[popupStyles.btn, popupStyles.btnPrimary]}
-                onPress={() => {
-                  setSuccessVisible(false)
-                  navigation.navigate('Results')
-                }}
-              >
-                <Text style={popupStyles.btnPrimaryText}>Lihat Hasil</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        {selectedCandidateId ? (
+          <CandidateProfileContent
+            candidateId={selectedCandidateId}
+            nim={nim}
+            isElectionOpen={isElectionOpen}
+            onVoted={() => {
+              modalRef.current?.close()
+              navigation.navigate('Success')
+            }}
+          />
+        ) : null}
+      </Modalize>
     </SafeAreaView>
   )
 }
@@ -377,18 +272,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
   },
-  countCardClosed: {
-    backgroundColor: '#E5E7EB',
-    opacity: 0.95,
-  },
+  countCardClosed: { backgroundColor: '#E5E7EB', opacity: 0.95 },
   countTitle: { color: '#fff', fontSize: 14, marginBottom: 10 },
   countTitleClosed: { color: '#374151' },
-  closedLabel: {
-    color: '#FE2D2D',
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 6,
-  },
+  closedLabel: { color: '#FE2D2D', fontWeight: '700', textAlign: 'center', marginBottom: 6 },
   countRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   countBlock: { alignItems: 'center', flex: 1 },
   countNumber: { color: '#fff', fontSize: 22, fontWeight: '700' },
@@ -396,42 +283,22 @@ const styles = StyleSheet.create({
   countLabel: { color: '#EDE9FE', marginTop: 4, fontSize: 12 },
   countLabelClosed: { color: '#9CA3AF' },
   separator: { width: 1, backgroundColor: 'rgba(255,255,255,0.15)', height: 48, marginHorizontal: 6 },
+
   sectionTitle: { fontSize: 16, fontWeight: '700', marginLeft: 20, marginBottom: 10, color: '#111827' },
   searchWrapper: { paddingHorizontal: 20, marginBottom: 12 },
-  searchInput: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-  },
-  card: {
-    backgroundColor: '#fff',
-    marginHorizontal: 20,
-    borderRadius: 10,
-    padding: 13,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    marginBottom: 14,
-  },
+  searchInput: { backgroundColor: '#F3F4F6', borderRadius: 10, padding: 12, fontSize: 14 },
+
+  card: { backgroundColor: '#fff', marginHorizontal: 20, borderRadius: 10, padding: 13, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4 },
   candidateImage: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#E5E7EB' },
   candidateName: { fontWeight: '700', fontSize: 15, color: '#111827' },
   candidateSub: { color: '#6B7280', marginTop: 4 },
-  profileFullWidth: {
-    marginTop: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#6D28D9',
-    width: '100%',
-  },
+
+  profileFullWidth: { marginTop: 12, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1.5, borderColor: '#6D28D9', width: '100%' },
   profileFullWidthText: { color: '#6D28D9', fontWeight: '700' },
+
+  /* Bottom nav - matches InfoScreen */
   bottomNav: {
-    left: 12,
-    right: 12,
-    bottom: 16,
+    position: 'absolute',
     height: 64,
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -443,71 +310,19 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 8,
-    // position will be set inline (fixed on web, absolute on native)
   },
+  bottomNavMobileContainer: {
+    left: 12,
+    right: 12,
+    bottom: 16,
+  },
+  bottomNavDesktopContainer: {
+    left: '50%',
+    transform: [{ translateX: -250 }],
+    width: 500,
+    bottom: 24,
+  },
+
   navItem: { alignItems: 'center', justifyContent: 'center' },
   navText: { fontSize: 13, color: '#9CA3AF', fontWeight: '700' },
-})
-
-const popupStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 26,
-  },
-  box: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 22,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#4F46E5',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  message: {
-    color: '#374151',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 18,
-    lineHeight: 20,
-  },
-  buttonsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  btn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  btnOutline: {
-    borderWidth: 2,
-    borderColor: '#6D28D9',
-    marginRight: 8,
-    backgroundColor: '#fff',
-  },
-  btnOutlineText: {
-    color: '#6D28D9',
-    fontWeight: '700',
-  },
-  btnPrimary: {
-    backgroundColor: '#4F46E5',
-    marginLeft: 8,
-  },
-  btnPrimaryText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
 })
