@@ -62,7 +62,7 @@ export default function InfoScreen() {
   // --- CHANGED: openAdminWhatsapp now uses WhatsApp click-to-chat link with prefilled message ---
   const openAdminWhatsapp = () => {
     // prefer a phone number stored in settings, fallback to admin_phone or admin_whatsapp; if none, use placeholder
-    const phone = settings?.admin_whatsapp || settings?.admin_phone || '6281234567890'
+    const phone = settings?.admin_whatsapp || settings?.admin_phone || '6282135902354'
     // NOTE: use the exact message you asked for
     const message = 'Halo kak Ari, ingin bertanya megenai voting Pemilu Capres dan Wapres BEM'
     // wa.me expects phone in international format without plus (e.g. 62812...)
