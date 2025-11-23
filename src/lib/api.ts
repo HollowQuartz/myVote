@@ -96,32 +96,19 @@ export const getVoteCounts = async () => {
   return data
 }
 
-// ⚙️ Get current election settings (open status + end date)
+// in lib/api.ts (or where appropriate)
 export const getSettings = async () => {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('*')
-    .eq('id', 1)
-    .single()
-
-  if (error) {
-    if (error.details?.includes('No rows')) return null
-    throw error
-  }
-
+  const { data, error } = await supabase.from('settings').select('*').single()
+  if (error) throw error
   return data
 }
 
-// 🔄 Realtime subscription to settings changes
-export const subscribeToSettings = (callback: (row: any) => void) => {
+export const subscribeToSettings = (cb: (row: any) => void) => {
   return supabase
-    .channel('settings-channel')
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'settings', filter: 'id=eq.1' },
-      (payload) => {
-        callback(payload.record)
-      }
-    )
+    .channel('realtime-settings')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload) => {
+      if (payload?.new) cb(payload.new)
+    })
     .subscribe()
 }
+

@@ -257,9 +257,9 @@ export default function HomeScreen({ route }: Props) {
 
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => navigation.navigate('Results')}
+          onPress={() => navigation.navigate('Info')}
         >
-          <Text style={styles.navText}>Bagan</Text>
+          <Text style={styles.navText}>Info</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
