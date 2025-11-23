@@ -20,7 +20,7 @@ const FAQ_DEFAULT: FAQItem[] = [
   { id: '1', q: 'Bagaimana cara memilih?', a: 'Masukkan NIM (12 digit) pada layar NIM, lalu pilih kandidat favorit dan konfirmasi. Setelah konfirmasi, suara tidak bisa diubah.' },
   { id: '2', q: 'Apakah suara saya anonim?', a: 'Saat ini admin dapat melihat pasangan NIM -> kandidat. Jika Anda ingin anonimitas penuh, ubah kebijakan penyimpanan di database.' },
   { id: '3', q: 'NIM sudah digunakan — apa artinya?', a: 'NIM tersebut sudah dipakai untuk memilih; setiap NIM hanya boleh memilih sekali.' },
-  { id: '4', q: 'Masalah teknis?', a: 'Hubungi admin lewat tombol email di halaman ini. Sertakan screenshot bila perlu.' },
+  { id: '4', q: 'Masalah teknis?', a: 'Hubungi admin lewat tombol WhatsApp di halaman ini. Sertakan screenshot bila perlu.' },
 ]
 
 export default function InfoScreen() {
@@ -58,10 +58,38 @@ export default function InfoScreen() {
   }, [])
 
   const toggleFAQ = (id: string) => setFaqOpen((s) => ({ ...s, [id]: !s[id] }))
-  const openAdminEmail = () => {
-    const email = settings?.admin_email ?? 'admin@example.com'
-    Linking.openURL(`mailto:${email}`)
+
+  // --- CHANGED: openAdminWhatsapp now uses WhatsApp click-to-chat link with prefilled message ---
+  const openAdminWhatsapp = () => {
+    // prefer a phone number stored in settings, fallback to admin_phone or admin_whatsapp; if none, use placeholder
+    const phone = settings?.admin_whatsapp || settings?.admin_phone || '6281234567890'
+    // NOTE: use the exact message you asked for
+    const message = 'Halo kak Ari, ingin bertanya megenai voting Pemilu Capres dan Wapres BEM'
+    // wa.me expects phone in international format without plus (e.g. 62812...)
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+    Linking.canOpenURL(url)
+      .then((supported) => {
+        if (!supported) {
+          // fallback: try api.whatsapp link
+          const alt = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`
+          Linking.openURL(alt).catch((err) => {
+            console.warn('Failed opening WhatsApp', err)
+            // as last resort, open email link (previous behavior)
+            const email = settings?.admin_email || 'admin@example.com'
+            Linking.openURL(`mailto:${email}`).catch(() => {})
+          })
+        } else {
+          Linking.openURL(url).catch((err) => {
+            console.warn('Failed opening wa link', err)
+          })
+        }
+      })
+      .catch((err) => {
+        console.warn('canOpenURL error', err)
+      })
   }
+  // --- end change ---
+
   const openResults = () => navigation.navigate('Results')
 
   const electionOpen = typeof settings?.election_open === 'boolean' ? settings.election_open : null
@@ -102,8 +130,9 @@ export default function InfoScreen() {
                 </TouchableOpacity>
               ) : null}
 
-              <TouchableOpacity style={styles.btnOutline} onPress={openAdminEmail}>
-                <Text style={styles.btnOutlineText}>Hubungi Admin</Text>
+              {/* CHANGED: contact via WhatsApp click-to-chat with prefilled message */}
+              <TouchableOpacity style={styles.btnOutline} onPress={openAdminWhatsapp}>
+                <Text style={styles.btnOutlineText}>Hubungi Ari</Text>
               </TouchableOpacity>
             </View>
           </View>
