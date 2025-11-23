@@ -64,7 +64,7 @@ export default function InfoScreen() {
     // prefer a phone number stored in settings, fallback to admin_phone or admin_whatsapp; if none, use placeholder
     const phone = settings?.admin_whatsapp || settings?.admin_phone || '6282135902354'
     // NOTE: use the exact message you asked for
-    const message = 'Halo kak Ari, ingin bertanya megenai voting Pemilu Capres dan Wapres BEM'
+    const message = 'Halo kak Ari, ingin bertanya mengenai voting Pemilu Capres dan Wapres BEM'
     // wa.me expects phone in international format without plus (e.g. 62812...)
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
     Linking.canOpenURL(url)
