@@ -8,8 +8,8 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  ScrollView,
   Alert,
+  useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { NativeStackScreenProps } from '@react-navigation/native-stack'
@@ -22,8 +22,7 @@ import { useUser } from '../contexts/UserContext'
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>
 
-export default function HomeScreen({ route }: Props) {
-  // nim now comes from context (set when user completes NIMScreen)
+export default function HomeScreen(_: Props) {
   const { nim } = useUser()
 
   const [candidates, setCandidates] = useState<any[]>([])
@@ -35,6 +34,8 @@ export default function HomeScreen({ route }: Props) {
 
   const navigation = useNavigation<any>()
   const modalRef = useRef<Modalize>(null)
+  const { width } = useWindowDimensions()
+  const isDesktop = width >= 900
 
   useEffect(() => {
     let mounted = true
@@ -117,106 +118,116 @@ export default function HomeScreen({ route }: Props) {
     )
   }
 
+  const renderCandidate = ({ item }: { item: any }) => (
+    <View style={styles.card}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Image
+          source={ item.photo_url ? { uri: item.photo_url } : require('../../assets/logo1.png') }
+          style={styles.candidateImage}
+        />
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.candidateName}>
+            {item.name_president} & {item.name_vice}
+          </Text>
+          <Text style={styles.candidateSub}>{item.faculty ?? 'Kampus'}</Text>
+
+          <TouchableOpacity onPress={() => openProfile(item.id)} style={styles.profileFullWidth}>
+            <Text style={styles.profileFullWidthText}>lihat profil</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  )
+
+  // List header so header content scrolls with candidates (prevents clipping)
+  const ListHeader = () => (
+    <>
+      {/* Top */}
+      <View style={styles.topRow}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Image source={require('../../assets/logo1.png')} style={styles.avatar} />
+          <View style={{ marginLeft: 12 }}>
+            <Text style={styles.username}>{nim ? nim : 'Pemilih'}</Text>
+            <Text style={styles.roleText}>Pemilih</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Countdown */}
+      <View style={[styles.countCard, !isElectionOpen && styles.countCardClosed]}>
+        <Text style={[styles.countTitle, !isElectionOpen && styles.countTitleClosed]}>
+          Waktu tersisa untuk pemilihan
+        </Text>
+        {!isElectionOpen && <Text style={styles.closedLabel}>Pemilihan Ditutup</Text>}
+        <View style={styles.countRow}>
+          <View style={styles.countBlock}>
+            <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
+              {countdown.days}
+            </Text>
+            <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Hari</Text>
+          </View>
+          <View style={styles.separator} />
+          <View style={styles.countBlock}>
+            <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
+              {countdown.hours}
+            </Text>
+            <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Jam</Text>
+          </View>
+          <View style={styles.separator} />
+          <View style={styles.countBlock}>
+            <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
+              {countdown.minutes}
+            </Text>
+            <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Menit</Text>
+          </View>
+          <View style={styles.separator} />
+          <View style={styles.countBlock}>
+            <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
+              {countdown.seconds}
+            </Text>
+            <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Detik</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Heading + search */}
+      <Text style={styles.sectionTitle}>Kandidat Capresma Cawapresma</Text>
+      <View style={styles.searchWrapper}>
+        <TextInput
+          placeholder="cari kandidat..."
+          placeholderTextColor="#9CA3AF"
+          value={search}
+          onChangeText={setSearch}
+          style={styles.searchInput}
+        />
+      </View>
+    </>
+  )
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-        {/* Top */}
-        <View style={styles.topRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Image source={require('../../assets/logo1.png')} style={styles.avatar} />
-            <View style={{ marginLeft: 12 }}>
-              <Text style={styles.username}>{nim ? nim : 'Pemilih'}</Text>
-              <Text style={styles.roleText}>Pemilih</Text>
-            </View>
-          </View>
-        </View>
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => item.id}
+        renderItem={renderCandidate}
+        ListHeaderComponent={ListHeader}
+        ItemSeparatorComponent={() => <View style={{ height: 15 }} />}
+        contentContainerStyle={{ paddingBottom: 140 }} // reserve space for bottom nav + safe area
+        showsVerticalScrollIndicator={false}
+      />
 
-        {/* Countdown */}
-        <View style={[styles.countCard, !isElectionOpen && styles.countCardClosed]}>
-          <Text style={[styles.countTitle, !isElectionOpen && styles.countTitleClosed]}>
-            Waktu tersisa untuk pemilihan
-          </Text>
-          {!isElectionOpen && <Text style={styles.closedLabel}>Pemilihan Ditutup</Text>}
-          <View style={styles.countRow}>
-            <View style={styles.countBlock}>
-              <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
-                {countdown.days}
-              </Text>
-              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Hari</Text>
-            </View>
-            <View style={styles.separator} />
-            <View style={styles.countBlock}>
-              <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
-                {countdown.hours}
-              </Text>
-              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Jam</Text>
-            </View>
-            <View style={styles.separator} />
-            <View style={styles.countBlock}>
-              <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
-                {countdown.minutes}
-              </Text>
-              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Menit</Text>
-            </View>
-            <View style={styles.separator} />
-            <View style={styles.countBlock}>
-              <Text style={[styles.countNumber, !isElectionOpen && styles.countNumberClosed]}>
-                {countdown.seconds}
-              </Text>
-              <Text style={[styles.countLabel, !isElectionOpen && styles.countLabelClosed]}>Detik</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Heading + search */}
-        <Text style={styles.sectionTitle}>Kandidat Capresma Cawapresma</Text>
-        <View style={styles.searchWrapper}>
-          <TextInput
-            placeholder="cari kandidat..."
-            placeholderTextColor="#9CA3AF"
-            value={search}
-            onChangeText={setSearch}
-            style={styles.searchInput}
-          />
-        </View>
-
-        {/* Candidate list */}
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          scrollEnabled={false}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Image
-                  source={ item.photo_url ? { uri: item.photo_url } : require('../../assets/logo1.png') }
-                  style={styles.candidateImage}
-                />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.candidateName}>
-                    {item.name_president} & {item.name_vice}
-                  </Text>
-                  <Text style={styles.candidateSub}>{item.faculty ?? 'Kampus'}</Text>
-
-                  <TouchableOpacity onPress={() => openProfile(item.id)} style={styles.profileFullWidth}>
-                    <Text style={styles.profileFullWidthText}>lihat profil</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-          ItemSeparatorComponent={() => <View style={{ height: 15 }} />}
-        />
-      </ScrollView>
-
-      {/* Bottom nav (keeps same look as InfoScreen) */}
-      <View style={[styles.bottomNav, styles.bottomNavMobileContainer]}>
+      {/* Bottom nav (same appearance as InfoScreen) */}
+      <View style={[styles.bottomNav, isDesktop ? styles.bottomNavDesktop : styles.bottomNavMobile]}>
         <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
           <Text style={[styles.navText, { color: '#4F46E5' }]}>Home</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Info')}>
-          <Text style={[styles.navText]}>Info</Text>
+          <Text style={styles.navText}>Info</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={() => Alert.alert('Belum tersedia', 'Favorit belum diimplementasikan')}>
+          <Text style={styles.navText}>Favorit</Text>
         </TouchableOpacity>
       </View>
 
@@ -305,10 +316,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
   },
-  bottomNavMobileContainer: {
+  bottomNavMobile: {
     left: 12,
     right: 12,
     bottom: 16,
+  },
+  bottomNavDesktop: {
+    left: '50%',
+    transform: [{ translateX: -250 }],
+    width: 500,
+    bottom: 24,
   },
 
   navItem: { alignItems: 'center', justifyContent: 'center' },
