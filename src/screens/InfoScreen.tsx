@@ -25,7 +25,7 @@ const FAQ_DEFAULT: FAQItem[] = [
   {
     id: '2',
     q: 'Apakah suara saya anonim?',
-    a: 'Saat ini admin dapat melihat pasangan NIM -> kandidat (sesuai permintaan Anda). Jika Anda ingin anonimitas penuh, ubah kebijakan penyimpanan di database.',
+    a: 'Saat ini admin dapat melihat pasangan NIM -> kandidat (sesuai pengaturan Anda). Jika ingin anonimitas penuh, ubah kebijakan penyimpanan di database.',
   },
   {
     id: '3',
@@ -87,6 +87,12 @@ export default function InfoScreen() {
 
   const openResults = () => {
     navigation.navigate('Results')
+  }
+
+  const goHome = () => navigation.navigate('Home')
+  const goFavorites = () => {
+    // placeholder
+    alert('Favorit belum tersedia')
   }
 
   const electionOpen = typeof settings?.election_open === 'boolean' ? settings.election_open : null
@@ -162,13 +168,28 @@ export default function InfoScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Bottom nav (responsive) */}
+      <View style={[styles.bottomNav, isDesktop ? styles.bottomNavDesktop : styles.bottomNavMobile]}>
+        <TouchableOpacity style={styles.navItem} onPress={goHome}>
+          <Text style={[styles.navText, { color: '#4F46E5' }]}>Home</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem}>
+          <Text style={[styles.navText, { color: '#4F46E5', fontWeight: '800' }]}>Info</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={goFavorites}>
+          <Text style={styles.navText}>Favorit</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   outer: { flex: 1, backgroundColor: '#fff' },
-  scroll: { paddingBottom: 40 },
+  scroll: { paddingBottom: 120 }, // leave space for bottom nav on mobile
   container: {
     paddingHorizontal: 20,
     paddingTop: 18,
@@ -231,7 +252,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
   },
-  faqQText: { fontWeight: '700', color: '#111827' },
+  faqQText: { fontWeight: '700', color: '#111827', flex: 1 },
   faqToggle: { fontSize: 20, color: '#6B7280', paddingHorizontal: 6 },
   faqA: { color: '#374151', marginTop: 6, lineHeight: 20 },
+
+  /* Bottom nav */
+  bottomNav: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 16,
+    height: 64,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: 12,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+  },
+  bottomNavMobile: {
+    marginLeft: 12,
+    marginRight: 12,
+  },
+  bottomNavDesktop: {
+    // on desktop keep it centered and narrower
+    left: '50%',
+    transform: [{ translateX: -250 }],
+    width: 500,
+    bottom: 24,
+  },
+  navItem: { alignItems: 'center', justifyContent: 'center' },
+  navText: { fontSize: 13, color: '#9CA3AF', fontWeight: '700' },
 })
