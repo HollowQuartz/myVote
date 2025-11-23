@@ -1,7 +1,26 @@
 // src/lib/api.ts
 import { supabase } from './supabase'
 
-// 🧠 Fetch all candidates
+/**
+ * Validate that a NIM exists in students table.
+ */
+export const validateNim = async (nim: string) => {
+  if (!nim) return false
+  const { data, error } = await supabase
+    .from('students')
+    .select('nim')
+    .eq('nim', nim)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('validateNim error', error)
+    throw error
+  }
+  return !!data
+}
+
+/** Fetch all candidates */
 export const getCandidates = async () => {
   const { data, error } = await supabase
     .from('candidates')
@@ -9,77 +28,71 @@ export const getCandidates = async () => {
     .order('created_at', { ascending: true })
 
   if (error) throw error
-  return data
+  return data ?? []
 }
 
+/** Fetch single candidate by id */
 export const getCandidateById = async (id: string) => {
   const { data, error } = await supabase
     .from('candidates')
     .select('*')
     .eq('id', id)
-    .single()
+    .maybeSingle()
+
   if (error) throw error
-  return data
+  return data ?? null
 }
 
-// 🗳 Submit a vote (improved: logs and robust duplicate detection)
+/** Submit a vote — Option A: verify student exists then insert (prevent duplicates) */
 export const castVote = async (nim: string, candidateId: string) => {
-  const normalizedNim = String(nim).trim()
+  if (!nim) throw new Error('NIM kosong')
 
-  try {
-    // Attempt insert
-    const resp = await supabase
-      .from('votes')
-      .insert([{ nim: normalizedNim, candidate_id: candidateId }])
-      .select()
-
-    // Normalize client response shape
-    const data = (resp as any)?.data ?? (resp as any)
-    const error = (resp as any)?.error ?? (resp as any)?.error ?? null
-
-    if (error) {
-      // Log full error for debugging
-      // eslint-disable-next-line no-console
-      console.error('castVote SUPABASE ERROR RAW:', JSON.stringify(error, null, 2))
-
-      const msg = String(error?.message ?? '').toLowerCase()
-      const code = String(error?.code ?? '')
-
-      if (
-        code === '23505' ||
-        msg.includes('duplicate') ||
-        msg.includes('unique') ||
-        msg.includes('already')
-      ) {
-        throw new Error('NIM ini sudah digunakan untuk memilih.')
-      }
-
-      // fallback: throw original error
-      throw error
-    }
-
-    return data
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error('castVote CATCH:', err)
-
-    const msg = String(err?.message ?? '').toLowerCase()
-    const code = String(err?.code ?? '')
-
-    if (
-      code === '23505' ||
-      msg.includes('duplicate') ||
-      msg.includes('unique') ||
-      msg.includes('already')
-    ) {
-      throw new Error('NIM ini sudah digunakan untuk memilih.')
-    }
-
-    throw err
+  // 1) ensure student exists
+  const exists = await validateNim(nim)
+  if (!exists) {
+    throw new Error('NIM tidak terdaftar.')
   }
+
+  // 2) check duplicate (same nim already voted)
+  const { data: existing, error: checkErr } = await supabase
+    .from('votes')
+    .select('id')
+    .eq('nim', nim)
+    .limit(1)
+
+  if (checkErr) {
+    console.error('castVote checkErr', checkErr)
+    throw checkErr
+  }
+  if (existing && (existing as any[]).length > 0) {
+    throw new Error('NIM ini sudah digunakan untuk memilih.')
+  }
+
+  // 3) insert
+  const { error } = await supabase
+    .from('votes')
+    .insert([{ nim, candidate_id: candidateId }])
+
+  if (error) {
+    // relay supabase error
+    throw error
+  }
+
+  return true
 }
 
-// 📊 Real-time subscription (optional)
+/** Get vote counts (returns rows of votes or aggregate depending on use) */
+export const getVoteCounts = async () => {
+  // We'll return raw votes rows (caller can aggregate)
+  const { data, error } = await supabase
+    .from('votes')
+    .select('candidate_id') // you can extend to counts via RPC if preferred
+
+  if (error) throw error
+  return data ?? []
+}
+
+/** Realtime vote subscription (INSERT) */
 export const subscribeToVotes = (callback: () => void) => {
   return supabase
     .channel('realtime-votes')
@@ -87,28 +100,23 @@ export const subscribeToVotes = (callback: () => void) => {
     .subscribe()
 }
 
-// ✅ Count votes for each candidate
-export const getVoteCounts = async () => {
-  const { data, error } = await supabase
-    .from('votes')
-    .select('candidate_id', { count: 'exact' })
-  if (error) throw error
-  return data
-}
-
-// in lib/api.ts (or where appropriate)
+/** Settings helpers (single row) */
 export const getSettings = async () => {
-  const { data, error } = await supabase.from('settings').select('*').single()
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .limit(1)
+    .maybeSingle()
   if (error) throw error
-  return data
+  return data ?? null
 }
 
-export const subscribeToSettings = (cb: (row: any) => void) => {
+export const subscribeToSettings = (callback: (row: any) => void) => {
   return supabase
     .channel('realtime-settings')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload) => {
-      if (payload?.new) cb(payload.new)
+      // payload.record contains the updated row for update/insert events
+      callback(payload.record)
     })
     .subscribe()
 }
-

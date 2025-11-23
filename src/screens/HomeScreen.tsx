@@ -18,13 +18,14 @@ import { getCandidates, getSettings, subscribeToSettings } from '../lib/api'
 import { useNavigation } from '@react-navigation/native'
 import { Modalize } from 'react-native-modalize'
 import CandidateProfileContent from '../components/CandidateProfileContent'
+import { useUser } from '../contexts/UserContext'
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>
 
 export default function HomeScreen({ route }: Props) {
-  const nimFromRoute = route?.params?.nim as string | undefined
+  // nim now comes from context (set when user completes NIMScreen)
+  const { nim } = useUser()
 
-  const [nim, setNim] = useState<string>(nimFromRoute ?? '')
   const [candidates, setCandidates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -118,7 +119,6 @@ export default function HomeScreen({ route }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* scroll area reserves bottom space so nav doesn't overlap content */}
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Top */}
         <View style={styles.topRow}>
@@ -198,7 +198,6 @@ export default function HomeScreen({ route }: Props) {
                   </Text>
                   <Text style={styles.candidateSub}>{item.faculty ?? 'Kampus'}</Text>
 
-                  {/* Full-width profile button opens modal */}
                   <TouchableOpacity onPress={() => openProfile(item.id)} style={styles.profileFullWidth}>
                     <Text style={styles.profileFullWidthText}>lihat profil</Text>
                   </TouchableOpacity>
@@ -242,7 +241,7 @@ export default function HomeScreen({ route }: Props) {
             isElectionOpen={isElectionOpen}
             onVoted={() => {
               modalRef.current?.close()
-              navigation.navigate('Success')
+              navigation.navigate('Results')
             }}
           />
         ) : null}
@@ -292,7 +291,6 @@ const styles = StyleSheet.create({
   profileFullWidth: { marginTop: 12, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1.5, borderColor: '#6D28D9', width: '100%' },
   profileFullWidthText: { color: '#6D28D9', fontWeight: '700' },
 
-  /* Bottom nav - matches InfoScreen */
   bottomNav: {
     position: 'absolute',
     height: 64,
@@ -311,12 +309,6 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     bottom: 16,
-  },
-  bottomNavDesktopContainer: {
-    left: '50%',
-    transform: [{ translateX: -250 }],
-    width: 500,
-    bottom: 24,
   },
 
   navItem: { alignItems: 'center', justifyContent: 'center' },

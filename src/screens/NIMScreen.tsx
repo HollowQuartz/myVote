@@ -12,42 +12,52 @@ import {
   Platform,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
-import { useUser } from '../contexts/UserContext' // <- adjust path if your file is in ../contexts
+import { useUser } from '../contexts/UserContext' // <- keep your path
 import { isWeb } from '../lib/platform'
+import { validateNim } from '../lib/api'
 
 export default function NIMScreen() {
   const navigation = useNavigation<any>()
   const { nim: nimFromCtx, setNim } = useUser()
 
-  // local input state, initialized from context if available
   const [nim, setNimLocal] = useState<string>(nimFromCtx ?? '')
+  const [validating, setValidating] = useState(false)
 
   useEffect(() => {
-    // keep local input synced if context nim changes externally
     if (nimFromCtx && nimFromCtx !== nim) {
       setNimLocal(nimFromCtx)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nimFromCtx])
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const trimmed = nim.trim()
-    // Check NIM length (12 chars)
     if (trimmed.length !== 12) {
       Alert.alert('NIM tidak valid', 'NIM harus terdiri dari 12 karakter.')
       return
     }
 
-    // Save NIM to global context
-    setNim(trimmed)
+    try {
+      setValidating(true)
+      const ok = await validateNim(trimmed)
+      setValidating(false)
+      if (!ok) {
+        // show modal-style Alert (works cross-platform)
+        Alert.alert('NIM Tidak Terdaftar', 'NIM yang Anda masukkan tidak ditemukan dalam daftar mahasiswa aktif.')
+        return
+      }
 
-    // Navigate to Home — context will provide the nim for Home
-    navigation.navigate('Home')
+      // Save into context and go home
+      setNim(trimmed)
+      navigation.navigate('Home')
+    } catch (err: any) {
+      setValidating(false)
+      Alert.alert('Error', err?.message || 'Terjadi kesalahan saat memeriksa NIM.')
+    }
   }
 
   const isValid = nim.trim().length === 12
 
-  // Use KeyboardAvoidingView on native iOS, otherwise use a simple View on web/Android
   const Wrapper: any = isWeb ? View : KeyboardAvoidingView
   const wrapperProps = isWeb
     ? { style: styles.container }
@@ -56,13 +66,9 @@ export default function NIMScreen() {
   return (
     <Wrapper {...wrapperProps}>
       <View style={styles.inner}>
-        {/* Logo */}
         <Image source={require('../../assets/logo1.png')} style={styles.logo} />
-
-        {/* Title */}
         <Text style={styles.title}>Selamat datang di myVote</Text>
 
-        {/* Input field */}
         <View style={styles.inputWrapper}>
           <TextInput
             value={nim}
@@ -74,21 +80,19 @@ export default function NIMScreen() {
             style={styles.input}
             returnKeyType="done"
             onSubmitEditing={() => {
-              if (isValid) handleContinue()
+              if (isValid && !validating) handleContinue()
             }}
-            // center input for web too
             textContentType="none"
             autoComplete="off"
           />
         </View>
 
-        {/* Continue Button */}
         <TouchableOpacity
           style={[styles.button, isValid ? styles.buttonEnabled : styles.buttonDisabled]}
           onPress={handleContinue}
-          disabled={!isValid}
+          disabled={!isValid || validating}
         >
-          <Text style={styles.buttonText}>Masuk</Text>
+          <Text style={styles.buttonText}>{validating ? 'Memeriksa...' : 'Masuk'}</Text>
         </TouchableOpacity>
       </View>
     </Wrapper>
@@ -96,57 +100,14 @@ export default function NIMScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-  },
-  inner: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  logo: {
-    width: 110,
-    height: 110,
-    resizeMode: 'contain',
-    marginBottom: 40,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 40,
-    textAlign: 'center',
-  },
-  inputWrapper: {
-    width: '100%',
-    marginBottom: 24,
-  },
-  input: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 16,
-    color: '#111827',
-    textAlign: 'center',
-  },
-  button: {
-    width: '100%',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  buttonEnabled: {
-    backgroundColor: '#4F46E5',
-  },
-  buttonDisabled: {
-    backgroundColor: '#A5B4FC',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
+  container: { flex: 1, backgroundColor: '#fff', justifyContent: 'center' },
+  inner: { alignItems: 'center', paddingHorizontal: 24 },
+  logo: { width: 110, height: 110, resizeMode: 'contain', marginBottom: 40 },
+  title: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 40, textAlign: 'center' },
+  inputWrapper: { width: '100%', marginBottom: 24 },
+  input: { width: '100%', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 14, fontSize: 16, color: '#111827', textAlign: 'center' },
+  button: { width: '100%', paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
+  buttonEnabled: { backgroundColor: '#4F46E5' },
+  buttonDisabled: { backgroundColor: '#A5B4FC' },
+  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 })
