@@ -75,7 +75,7 @@ export default function InfoScreen() {
           Linking.openURL(alt).catch((err) => {
             console.warn('Failed opening WhatsApp', err)
             // as last resort, open email link (previous behavior)
-            const email = settings?.admin_email || 'admin@example.com'
+            const email = settings?.admin_email || 'arimasfufahh@gmail.com'
             Linking.openURL(`mailto:${email}`).catch(() => {})
           })
         } else {
