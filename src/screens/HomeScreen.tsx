@@ -219,10 +219,6 @@ export default function HomeScreen({ route }: Props) {
         <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Info')}>
           <Text style={[styles.navText]}>Info</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity style={styles.navItem} onPress={() => Alert.alert('Belum tersedia', 'Favorit belum diimplementasikan')}>
-          <Text style={styles.navText}>Favorit</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Modalize Bottom Sheet for Candidate Profile */}

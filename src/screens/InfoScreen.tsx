@@ -141,10 +141,6 @@ export default function InfoScreen() {
         <View style={styles.navItem}>
           <Text style={[styles.navText, { color: '#4F46E5', fontWeight: '800' }]}>Info</Text>
         </View>
-
-        <TouchableOpacity style={styles.navItem} onPress={() => alert('Favorit belum tersedia')}>
-          <Text style={styles.navText}>Favorit</Text>
-        </TouchableOpacity>
       </View>
     </SafeAreaView>
   )
