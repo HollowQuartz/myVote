@@ -132,7 +132,7 @@ export default function InfoScreen() {
 
               {/* CHANGED: contact via WhatsApp click-to-chat with prefilled message */}
               <TouchableOpacity style={styles.btnOutline} onPress={openAdminWhatsapp}>
-                <Text style={styles.btnOutlineText}>Hubungi Ari</Text>
+                <Text style={styles.btnOutlineText}>Hubungi Admin</Text>
               </TouchableOpacity>
             </View>
           </View>
