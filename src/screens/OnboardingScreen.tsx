@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   FlatList,
   useWindowDimensions,
-  AccessibilityInfo,
   Platform,
+  AccessibilityInfo,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -33,54 +33,83 @@ const slides = [
   },
 ]
 
-export default function OnboardingScreenDesktop({ navigation }: any) {
+export default function OnboardingScreen({ navigation }: any) {
   const [currentIndex, setCurrentIndex] = useState(0)
-  const flatListRef = useRef<FlatList>(null)
-  const { width } = useWindowDimensions()
+  const flatListRef = useRef<FlatList<any> | null>(null)
+  const { width, height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
+
+  // Breakpoint for desktop layout
+  const isDesktop = width >= 900
 
   const handleNext = () => {
     if (currentIndex < slides.length - 1) {
-      flatListRef.current?.scrollToIndex({
-        index: currentIndex + 1,
-        animated: true,
-      })
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })
 
       if (Platform.OS === 'web') {
-        AccessibilityInfo.setAccessibilityFocus &&
-          AccessibilityInfo.setAccessibilityFocus(0 as any)
+        AccessibilityInfo.setAccessibilityFocus?.(0 as any)
       }
     } else {
       navigation.replace('NIM')
     }
   }
 
-  const handleSkip = () => navigation.replace('NIM')
+  const handleSkip = () => {
+    navigation.replace('NIM')
+  }
 
   const onScroll = (e: any) => {
     const index = Math.round(e.nativeEvent.contentOffset.x / width)
     setCurrentIndex(index)
   }
 
-  const renderSlide = ({ item }: any) => {
-    return (
-      <View style={[styles.desktopSlideContainer, { width }]}>
-        <View style={styles.desktopInner}>
-          <View style={styles.imageWrapper}>
-            <Image
-              source={item.image}
-              style={styles.desktopImage}
-              resizeMode="contain"
-              accessible
-              accessibilityLabel={item.title}
-            />
-          </View>
+  // Desktop keyboard support (← →)
+  useEffect(() => {
+    if (!isDesktop) return
 
-          <View style={styles.textWrapper}>
-            <Text style={styles.desktopTitle}>{item.title}</Text>
-            <Text style={styles.desktopDescription}>{item.description}</Text>
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') handleNext()
+      if (e.key === 'ArrowLeft' && currentIndex > 0) {
+        flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true })
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [currentIndex, isDesktop])
+
+  // Renders slide for desktop or mobile
+  const renderSlide = ({ item }: { item: typeof slides[number] }) => {
+    if (isDesktop) {
+      return (
+        <View style={[styles.desktopSlide, { width }]}>
+          <View style={styles.desktopInner}>
+            <View style={styles.imageWrapper}>
+              <Image
+                source={item.image}
+                style={styles.desktopImage}
+                resizeMode="contain"
+              />
+            </View>
+
+            <View style={styles.textWrapper}>
+              <Text style={styles.desktopTitle}>{item.title}</Text>
+              <Text style={styles.desktopDescription}>{item.description}</Text>
+            </View>
           </View>
         </View>
+      )
+    }
+
+    // MOBILE layout
+    return (
+      <View style={[styles.slide, { width }]}>
+        <Image
+          source={item.image}
+          style={[styles.mobileImage, { width: width * 0.8, height: width * 0.8 }]}
+          resizeMode="contain"
+        />
+        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.description}>{item.description}</Text>
       </View>
     )
   }
@@ -102,9 +131,11 @@ export default function OnboardingScreenDesktop({ navigation }: any) {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
-        renderItem={renderSlide}
         keyExtractor={(item) => item.id}
+        renderItem={renderSlide}
         getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+        initialNumToRender={1}
+        windowSize={3}
       />
 
       {/* Pagination */}
@@ -118,7 +149,13 @@ export default function OnboardingScreenDesktop({ navigation }: any) {
       </View>
 
       {/* Next Button */}
-      <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+      <TouchableOpacity
+        style={[
+          styles.nextButton,
+          isDesktop && styles.nextButtonDesktop
+        ]}
+        onPress={handleNext}
+      >
         <Text style={styles.nextText}>
           {currentIndex < slides.length - 1 ? 'Next' : 'Mulai'}
         </Text>
@@ -128,95 +165,109 @@ export default function OnboardingScreenDesktop({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#fff', justifyContent: 'center' },
 
-  skipButton: {
-    position: 'absolute',
-    right: 30,
-    zIndex: 99,
-  },
-  skipText: {
-    color: '#4F46E5',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-
-  desktopSlideContainer: {
+  /** ------------------ MOBILE ------------------ **/
+  slide: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 50,
+    paddingHorizontal: 20,
+  },
+  mobileImage: {},
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 20,
+    color: '#111827',
+  },
+  description: {
+    textAlign: 'center',
+    color: '#6B7280',
+    marginTop: 10,
+    fontSize: 15,
+    paddingHorizontal: 30,
+  },
+
+  /** ------------------ DESKTOP ------------------ **/
+  desktopSlide: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
   },
   desktopInner: {
-    width: '90%',
-    maxWidth: 1200,
+    width: '92%',
+    maxWidth: 1100,
     flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 34,
-    boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
+    borderRadius: 14,
+    padding: 28,
+    alignItems: 'center',
+    gap: 32,
   },
-
   imageWrapper: {
     flex: 1,
+    maxWidth: 520,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   desktopImage: {
     width: '100%',
     maxWidth: 500,
+    maxHeight: '60vh',
     aspectRatio: 1,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
   },
-
   textWrapper: {
     flex: 1,
-    paddingLeft: 30,
+    paddingLeft: 28,
+    minWidth: 320,
   },
   desktopTitle: {
-    fontSize: 36,
+    fontSize: 30,
     fontWeight: '800',
     color: '#111827',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   desktopDescription: {
-    fontSize: 20,
+    fontSize: 18,
     color: '#6B7280',
-    lineHeight: 28,
+    lineHeight: 26,
   },
+
+  /** ------------------ SHARED ELEMENTS ------------------ **/
+  skipButton: { position: 'absolute', right: 25, zIndex: 2 },
+  skipText: { color: '#4F46E5', fontSize: 16, fontWeight: '600' },
 
   pagination: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginVertical: 20,
+    marginBottom: 12,
   },
   dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8, height: 8, borderRadius: 4,
     backgroundColor: '#D1D5DB',
-    marginHorizontal: 6,
+    marginHorizontal: 5,
   },
-  activeDot: {
-    backgroundColor: '#4F46E5',
-  },
+  activeDot: { backgroundColor: '#4F46E5' },
 
   nextButton: {
     backgroundColor: '#4F46E5',
-    paddingVertical: 16,
-    borderRadius: 12,
-    width: 260,
-    alignSelf: 'center',
-    marginBottom: 40,
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginHorizontal: 30,
+    marginBottom: 30,
   },
+
+  nextButtonDesktop: {
+    width: 320,
+    alignSelf: 'center',
+    borderRadius: 12,
+  },
+
   nextText: {
     textAlign: 'center',
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '600',
+    fontSize: 16,
   },
 })
