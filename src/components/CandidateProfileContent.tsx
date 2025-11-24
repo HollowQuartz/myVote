@@ -1,5 +1,5 @@
 // src/components/CandidateProfileContent.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,22 +11,28 @@ import {
   Linking,
   Modal,
   Pressable,
+  Animated,
+  Easing,
+  useWindowDimensions,
   Platform,
 } from "react-native";
 import { getCandidateById, castVote } from "../lib/api";
 import { isWeb } from "../lib/platform";
+import { Video } from "expo-av";
 
 type Props = {
   candidateId: string;
   nim?: string;
+  visible?: boolean;
   onVoted?: () => void;
   isElectionOpen?: boolean;
-  onClose?: () => void; // for web modal back
+  onClose?: () => void;
 };
 
 export default function CandidateProfileContent({
   candidateId,
   nim,
+  visible = true,
   onVoted,
   isElectionOpen = true,
   onClose,
@@ -38,13 +44,9 @@ export default function CandidateProfileContent({
   const [voting, setVoting] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  const showUserAlert = (title: string, message: string) => {
-    if (isWeb) {
-      window.alert(`${title}\n\n${message}`);
-    } else {
-      Alert.alert(title, message);
-    }
-  };
+  const anim = useRef(new Animated.Value(0)).current; // 0 = hidden, 1 = shown
+  const { height, width } = useWindowDimensions();
+  const isDesktop = width >= 900;
 
   useEffect(() => {
     let active = true;
@@ -52,8 +54,7 @@ export default function CandidateProfileContent({
       try {
         const data = await getCandidateById(candidateId);
         if (active) setCandidate(data);
-      } catch (e) {
-        console.warn("getCandidateById failed", e);
+      } catch {
         showUserAlert("Error", "Gagal memuat profil kandidat.");
       } finally {
         if (active) setLoading(false);
@@ -63,6 +64,33 @@ export default function CandidateProfileContent({
       active = false;
     };
   }, [candidateId]);
+
+  // animate in/out when `visible` changes
+  useEffect(() => {
+    if (visible) {
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(anim, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible, anim]);
+
+  const showUserAlert = (title: string, message: string) => {
+    if (isWeb) {
+      window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
 
   const handleVoteNow = async () => {
     if (!nim) {
@@ -76,16 +104,14 @@ export default function CandidateProfileContent({
       setVoting(false);
       setConfirmVisible(false);
 
-      // call parent callback asynchronously to avoid sync unmount + navigation issues
-      if (typeof onVoted === "function") {
-        setTimeout(() => {
-          try {
-            onVoted();
-          } catch (e) {
-            console.warn("onVoted handler threw", e);
-          }
-        }, 60);
-      }
+      // animate close then call onVoted
+      Animated.timing(anim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        try { onVoted && onVoted() } catch (e) { console.warn(e) }
+      });
     } catch (err: any) {
       setVoting(false);
       const msg = err?.message ?? "Terjadi kesalahan.";
@@ -109,196 +135,209 @@ export default function CandidateProfileContent({
 
   if (loading)
     return (
-      <View style={{ padding: 20 }}>
-        <Text>Loading...</Text>
-      </View>
+      <Modal visible transparent>
+        <View style={modalStyles.overlay}>
+          <View style={[modalStyles.box, { padding: 20 }]}>
+            <Text>Memuat profil...</Text>
+          </View>
+        </View>
+      </Modal>
     );
 
   if (!candidate)
     return (
-      <View style={{ padding: 20 }}>
-        <Text>Profil tidak ditemukan.</Text>
-      </View>
-    );
-
-  // candidate fields: photo_url, campaign_video_url, vision, mission, president_bio, vice_bio, experience_president, experience_vice, social_links, faculty, birth info...
-  const videoUrl = candidate.campaign_video_url ?? candidate.campaign_video ?? null;
-
-  return (
-    <>
-      {/* Scrollable content */}
-      <ScrollView contentContainerStyle={styles.content} nestedScrollEnabled={true}>
-        {/* Web back button */}
-        {isWeb && onClose && (
-          <TouchableOpacity style={{ marginBottom: 12 }} onPress={onClose}>
-            <Text style={{ color: "#6B7280" }}>← Kembali</Text>
-          </TouchableOpacity>
-        )}
-
-        <Image
-  source={
-    !imageError && candidate.photo_url
-      ? { uri: candidate.photo_url }
-      : require("../../assets/logo1.png")
-  }
-  style={[
-    styles.headerImage,
-    { resizeMode: "contain" }
-  ]}
-  onError={() => setImageError(true)}
-/>
-
-        <Text style={styles.title}>
-          {candidate.name_president} & {candidate.name_vice}
-        </Text>
-        <Text style={styles.subtitle}>{candidate.faculty ?? ""}</Text>
-
-        {/* Vote button */}
-        <TouchableOpacity
-          style={[styles.voteNow, !isElectionOpen && styles.voteNowDisabled]}
-          onPress={() => isElectionOpen && setConfirmVisible(true)}
-          activeOpacity={isElectionOpen ? 0.8 : 1}
-        >
-          <Text style={[styles.voteNowText, !isElectionOpen && styles.voteNowTextDisabled]}>
-            {isElectionOpen ? "Vote Sekarang" : "Pemilihan Ditutup"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* TABS */}
-        <View style={styles.tabs}>
-          <TouchableOpacity style={[styles.tab, tab === "profile" && styles.tabActive]} onPress={() => setTab("profile")}>
-            <Text style={[styles.tabText, tab === "profile" && styles.tabTextActive]}>Profil</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.tab, tab === "kampanye" && styles.tabActive]} onPress={() => setTab("kampanye")}>
-            <Text style={[styles.tabText, tab === "kampanye" && styles.tabTextActive]}>Kampanye</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* TAB CONTENT */}
-        {tab === "profile" ? (
-          <>
-            <Text style={styles.sectionHeader}>{candidate.name_president}</Text>
-            <Text style={styles.muted}>Tempat, Tanggal Lahir</Text>
-            <Text style={styles.body}>
-              {candidate.president_birthplace ?? "-"}
-              {candidate.president_birthdate ? `, ${candidate.president_birthdate}` : ""}
-            </Text>
-
-            <Text style={styles.sectionHeader}>Biografi</Text>
-            <Text style={styles.body}>{candidate.president_bio ?? candidate.vision ?? "-"}</Text>
-
-            {candidate.experience_president ? (
-              <>
-                <Text style={styles.sectionHeader}>Pengalaman</Text>
-                <Text style={styles.body}>{candidate.experience_president}</Text>
-              </>
-            ) : null}
-
-            <View style={{ height: 12 }} />
-
-            <Text style={styles.sectionHeader}>{candidate.name_vice}</Text>
-            <Text style={styles.muted}>Tempat, Tanggal Lahir</Text>
-            <Text style={styles.body}>
-              {candidate.vice_birthplace ?? "-"}
-              {candidate.vice_birthdate ? `, ${candidate.vice_birthdate}` : ""}
-            </Text>
-
-            <Text style={styles.sectionHeader}>Biografi</Text>
-            <Text style={styles.body}>{candidate.vice_bio ?? "-"}</Text>
-
-            {candidate.experience_vice ? (
-              <>
-                <Text style={styles.sectionHeader}>Pengalaman</Text>
-                <Text style={styles.body}>{candidate.experience_vice}</Text>
-              </>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <Text style={styles.sectionHeader}>Visi</Text>
-            <Text style={styles.body}>{candidate.vision ?? "-"}</Text>
-
-            <Text style={[styles.sectionHeader, { marginTop: 12 }]}>Misi</Text>
-            <Text style={styles.body}>{candidate.mission ?? "-"}</Text>
-
-            {/* Video — web: embedded; native: open link fallback (or use react-native-video if added) */}
-            {videoUrl ? (
-              <>
-                <Text style={[styles.sectionHeader, { marginTop: 12 }]}>Video Kampanye</Text>
-
-                {isWeb ? (
-                  // HTML5 video element for web
-                  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                  // @ts-ignore
-                  <video
-                    controls
-                    src={videoUrl}
-                    style={{
-                      width: "100%",
-                      height: 360,
-                      borderRadius: 10,
-                      backgroundColor: "#000",
-                      marginTop: 8,
-                    }}
-                  />
-                ) : (
-                  // native: show preview + open externally (simple fallback)
-                  <View style={styles.nativeVideoWrap}>
-                    <View style={styles.nativeVideoPlaceholder}>
-                      <Text style={{ color: "#fff", fontWeight: "700" }}>Video tersedia</Text>
-                      <Text style={{ color: "#fff", fontSize: 12, marginTop: 6 }}>Tap Play untuk membuka</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => openLinkSafe(videoUrl)}
-                      style={styles.playButton}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "700" }}>Play</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </>
-            ) : null}
-          </>
-        )}
-
-        {/* Social Links */}
-        {candidate.social_links && Object.keys(candidate.social_links || {}).length > 0 && (
-          <View style={{ marginTop: 18 }}>
-            <Text style={styles.sectionHeader}>Sosial</Text>
-            {Object.entries(candidate.social_links).map(([k, v]) => (
-              <TouchableOpacity key={k} onPress={() => openLinkSafe(String(v))}>
-                <Text style={[styles.body, { color: "#3B82F6" }]}>
-                  {k}: {String(v)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        <View style={{ height: 40 }} />
-      </ScrollView>
-
-      {/* Confirmation Modal */}
-      <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
+      <Modal visible transparent onRequestClose={() => onClose && onClose()}>
         <View style={modalStyles.overlay}>
-          <View style={modalStyles.box}>
-            <Text style={modalStyles.title}>Konfirmasi</Text>
-            <Text style={modalStyles.message}>Apakah kamu yakin? Vote-mu tidak bisa diubah.</Text>
-
-            <View style={modalStyles.buttonsRow}>
-              <Pressable style={[modalStyles.btn, modalStyles.btnOutline]} onPress={() => setConfirmVisible(false)}>
-                <Text style={modalStyles.btnOutlineText}>Batal</Text>
-              </Pressable>
-
-              <Pressable style={[modalStyles.btn, modalStyles.btnPrimary]} onPress={handleVoteNow} disabled={voting}>
-                <Text style={modalStyles.btnPrimaryText}>{voting ? "Memilih..." : "Konfirmasi"}</Text>
-              </Pressable>
-            </View>
+          <View style={[modalStyles.box, { padding: 20 }]}>
+            <Text>Profil tidak ditemukan.</Text>
+            <Pressable style={[modalStyles.btn, { marginTop: 12 }]} onPress={() => onClose && onClose()}>
+              <Text style={modalStyles.btnPrimaryText}>Tutup</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
-    </>
+    );
+
+  const translateY = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [height, 0],
+  });
+
+  // header image sizing — desktop: larger, mobile: smaller but keep contain so full image visible
+  const headerHeight = isDesktop ? Math.min(420, height * 0.36) : Math.min(320, height * 0.32);
+  const headerResizeMode: 'cover' | 'contain' = isDesktop ? 'cover' : 'contain';
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={() => {
+        // animate out then call onClose
+        Animated.timing(anim, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
+          onClose && onClose()
+        })
+      }}
+    >
+      <Animated.View style={[modalStyles.backdrop, { opacity: anim }]}/>
+
+      <Animated.View
+        style={[
+          modalStyles.sheet,
+          { transform: [{ translateY }], maxHeight: height - 40 }
+        ]}
+      >
+        {/* Handle + close */}
+        <View style={modalStyles.handleRow}>
+          <View style={modalStyles.handle}/>
+          <View style={{ flex: 1 }}/>
+          <TouchableOpacity onPress={() => {
+            Animated.timing(anim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => onClose && onClose())
+          }}>
+            <Text style={modalStyles.closeText}>Tutup</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: 36 }]}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+        >
+          <Image
+            source={!imageError && candidate.photo_url ? { uri: candidate.photo_url } : require("../../assets/logo1.png")}
+            style={[styles.headerImage, { height: headerHeight }]}
+            resizeMode={headerResizeMode}
+            onError={() => setImageError(true)}
+          />
+
+          <Text style={styles.title}>
+            {candidate.name_president} & {candidate.name_vice}
+          </Text>
+          <Text style={styles.subtitle}>{candidate.faculty ?? ""}</Text>
+
+          {/* Vote button */}
+          <TouchableOpacity
+            style={[styles.voteNow, !isElectionOpen && styles.voteNowDisabled]}
+            onPress={() => isElectionOpen && setConfirmVisible(true)}
+            activeOpacity={isElectionOpen ? 0.85 : 1}
+          >
+            <Text style={[styles.voteNowText, !isElectionOpen && styles.voteNowTextDisabled]}>
+              {isElectionOpen ? "Vote Sekarang" : "Pemilihan Ditutup"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Tabs */}
+          <View style={styles.tabs}>
+            <TouchableOpacity style={[styles.tab, tab === "profile" && styles.tabActive]} onPress={() => setTab("profile")}>
+              <Text style={[styles.tabText, tab === "profile" && styles.tabTextActive]}>Profil</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.tab, tab === "kampanye" && styles.tabActive]} onPress={() => setTab("kampanye")}>
+              <Text style={[styles.tabText, tab === "kampanye" && styles.tabTextActive]}>Kampanye</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Body */}
+          {tab === "profile" ? (
+            <>
+              <Text style={styles.sectionHeader}>{candidate.name_president}</Text>
+              <Text style={styles.muted}>Tempat, Tanggal Lahir</Text>
+              <Text style={styles.body}>
+                {candidate.president_birthplace ?? "-"}
+                {candidate.president_birthdate ? `, ${candidate.president_birthdate}` : ""}
+              </Text>
+
+              <Text style={styles.sectionHeader}>Biografi</Text>
+              <Text style={styles.body}>{candidate.president_bio ?? "-"}</Text>
+
+              <View style={{ height: 12 }} />
+
+              <Text style={styles.sectionHeader}>{candidate.name_vice}</Text>
+              <Text style={styles.muted}>Tempat, Tanggal Lahir</Text>
+              <Text style={styles.body}>
+                {candidate.vice_birthplace ?? "-"}
+                {candidate.vice_birthdate ? `, ${candidate.vice_birthdate}` : ""}
+              </Text>
+
+              <Text style={styles.sectionHeader}>Biografi</Text>
+              <Text style={styles.body}>{candidate.vice_bio ?? "-"}</Text>
+
+              {candidate.experience_president ? (
+                <>
+                  <Text style={[styles.sectionHeader, { marginTop: 12 }]}>Pengalaman (Presiden)</Text>
+                  <Text style={styles.body}>{candidate.experience_president}</Text>
+                </>
+              ) : null}
+
+              {candidate.experience_vice ? (
+                <>
+                  <Text style={[styles.sectionHeader, { marginTop: 12 }]}>Pengalaman (Wakil)</Text>
+                  <Text style={styles.body}>{candidate.experience_vice}</Text>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Text style={styles.sectionHeader}>Visi</Text>
+              <Text style={styles.body}>{candidate.vision ?? "-"}</Text>
+
+              <Text style={[styles.sectionHeader, { marginTop: 12 }]}>Misi</Text>
+              <Text style={styles.body}>{candidate.mission ?? "-"}</Text>
+
+              {/* Campaign video (expo-av Video works on web & native) */}
+              {candidate.campaign_video_url ? (
+                <View style={{ marginTop: 16 }}>
+                  <Text style={styles.sectionHeader}>Video Kampanye</Text>
+                  <View style={{ marginTop: 8 }}>
+                    <Video
+                      source={{ uri: candidate.campaign_video_url }}
+                      style={{ width: '100%', height: 220, borderRadius: 8, backgroundColor: '#000' }}
+                      useNativeControls
+                      resizeMode="contain"
+                      shouldPlay={false}
+                    />
+                  </View>
+                </View>
+              ) : null}
+            </>
+          )}
+
+          {/* Social links */}
+          {candidate.social_links && (
+            <View style={{ marginTop: 18 }}>
+              <Text style={styles.sectionHeader}>Sosial</Text>
+              {Object.entries(candidate.social_links).map(([k, v]) => (
+                <TouchableOpacity key={k} onPress={() => openLinkSafe(v as string)}>
+                  <Text style={[styles.body, { color: "#3B82F6" }]}>{k}: {String(v)}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+
+        {/* Confirmation modal inside sheet */}
+        <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
+          <View style={modalStyles.overlay}>
+            <View style={modalStyles.box}>
+              <Text style={modalStyles.title}>Konfirmasi</Text>
+              <Text style={modalStyles.message}>Apakah kamu yakin? Vote-mu tidak bisa diubah.</Text>
+
+              <View style={modalStyles.buttonsRow}>
+                <Pressable style={[modalStyles.btn, modalStyles.btnOutline]} onPress={() => setConfirmVisible(false)}>
+                  <Text style={modalStyles.btnOutlineText}>Batal</Text>
+                </Pressable>
+
+                <Pressable style={[modalStyles.btn, modalStyles.btnPrimary]} onPress={handleVoteNow} disabled={voting}>
+                  <Text style={modalStyles.btnPrimaryText}>{voting ? "Memilih..." : "Konfirmasi"}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </Animated.View>
+    </Modal>
   );
 }
 
@@ -309,12 +348,10 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   headerImage: {
-  width: "100%",
-  height: undefined,
-  aspectRatio: 3 / 4,   // You can adjust based on your banner shape
-  backgroundColor: "#E5E7EB",
-},
-
+    width: "100%",
+    borderRadius: 10,
+    backgroundColor: "#E5E7EB",
+  },
   title: {
     fontSize: 20,
     fontWeight: "700",
@@ -384,35 +421,46 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: "#374151",
   },
-
-  nativeVideoWrap: {
-    marginTop: 8,
-    borderRadius: 10,
-    overflow: "hidden",
-    backgroundColor: "#111827",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-  },
-  nativeVideoPlaceholder: {
-    width: "100%",
-    height: 180,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000",
-    borderRadius: 8,
-  },
-  playButton: {
-    marginTop: 10,
-    backgroundColor: "#4F46E5",
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-  },
 });
 
-/* Modal */
+/* Modal styles used by both the sheet and inner confirmation modal */
 const modalStyles = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    zIndex: 999,
+  },
+  sheet: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 20,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+    maxHeight: '85%',
+    zIndex: 1000,
+    elevation: 10,
+  },
+  handleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
+  handle: {
+    width: 48,
+    height: 6,
+    borderRadius: 6,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+  },
+  closeText: {
+    color: '#6B7280',
+    fontWeight: '700',
+  },
+
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",

@@ -10,13 +10,13 @@ import {
   StyleSheet,
   Alert,
   useWindowDimensions,
+  SafeAreaView as RNSafeAreaView,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../navigation/AppNavigator'
 import { getCandidates, getSettings, subscribeToSettings } from '../lib/api'
 import { useNavigation } from '@react-navigation/native'
-import { Modalize } from 'react-native-modalize'
 import CandidateProfileContent from '../components/CandidateProfileContent'
 import { useUser } from '../contexts/UserContext'
 
@@ -31,9 +31,9 @@ export default function HomeScreen(_: Props) {
   const [settings, setSettings] = useState<any | null>(null)
   const [nowTick, setNowTick] = useState<number>(Date.now())
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
+  const [modalVisible, setModalVisible] = useState(false)
 
   const navigation = useNavigation<any>()
-  const modalRef = useRef<Modalize>(null)
   const { width } = useWindowDimensions()
   const isDesktop = width >= 900
 
@@ -107,7 +107,8 @@ export default function HomeScreen(_: Props) {
 
   const openProfile = (id: string) => {
     setSelectedCandidateId(id)
-    modalRef.current?.open()
+    // open modal (CandidateProfileContent will animate in)
+    setModalVisible(true)
   }
 
   if (loading) {
@@ -212,6 +213,7 @@ export default function HomeScreen(_: Props) {
         showsVerticalScrollIndicator={false}
       />
 
+      {/* Bottom nav (same appearance as InfoScreen) */}
       <View style={[styles.bottomNav, isDesktop ? styles.bottomNavDesktop : styles.bottomNavMobile]}>
         <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
           <Text style={[styles.navText, { color: '#4F46E5' }]}>Home</Text>
@@ -222,34 +224,29 @@ export default function HomeScreen(_: Props) {
         </TouchableOpacity>
       </View>
 
-      <Modalize
-        ref={modalRef}
-        onClosed={() => setSelectedCandidateId(null)}
-        modalStyle={{
-          backgroundColor: '#fff',
-          borderTopLeftRadius: 12,
-          borderTopRightRadius: 12,
-        }}
-        withHandle
-        panGestureEnabled
-        scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
-        snapPoint={680}
-      >
-        {selectedCandidateId ? (
-          <CandidateProfileContent
-            candidateId={selectedCandidateId}
-            nim={nim}
-            isElectionOpen={isElectionOpen}
-            onVoted={() => {
-              // close sheet first, then navigate asynchronously to avoid modal unmount + sync navigation issues
-              modalRef.current?.close()
-              setTimeout(() => {
-                navigation.navigate('Success')
-              }, 60)
-            }}
-          />
-        ) : null}
-      </Modalize>
+      {/* Candidate modal (slide-up) */}
+      {selectedCandidateId && (
+        <CandidateProfileContent
+          visible={modalVisible}
+          candidateId={selectedCandidateId}
+          nim={nim}
+          isElectionOpen={isElectionOpen}
+          onClose={() => {
+            // close modal
+            setModalVisible(false)
+            // unmount after small delay so animation can run
+            setTimeout(() => setSelectedCandidateId(null), 220)
+          }}
+          onVoted={() => {
+            // close modal then navigate to Success (avoid unmount race)
+            setModalVisible(false)
+            setTimeout(() => {
+              setSelectedCandidateId(null)
+              navigation.navigate('Success')
+            }, 220)
+          }}
+        />
+      )}
     </SafeAreaView>
   )
 }
