@@ -302,7 +302,7 @@ export default function CandidateProfileContent({
             </>
           )}
 
-          {/* Social links */}
+          {/* Social links
           {candidate.social_links && (
             <View style={{ marginTop: 18 }}>
               <Text style={styles.sectionHeader}>Sosial</Text>
@@ -312,7 +312,7 @@ export default function CandidateProfileContent({
                 </TouchableOpacity>
               ))}
             </View>
-          )}
+          )} */}
 
           <View style={{ height: 40 }} />
         </ScrollView>
