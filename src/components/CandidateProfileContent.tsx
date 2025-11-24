@@ -74,7 +74,12 @@ export default function CandidateProfileContent({
       setVoting(false);
       setConfirmVisible(false);
 
-      onVoted?.();
+      // call parent callback asynchronously to avoid sync unmount + navigation issues
+      if (typeof onVoted === "function") {
+        setTimeout(() => {
+          try { onVoted() } catch (e) { console.warn('onVoted handler threw', e) }
+        }, 60);
+      }
     } catch (err: any) {
       setVoting(false);
       const msg = err?.message ?? "Terjadi kesalahan.";

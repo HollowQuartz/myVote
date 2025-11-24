@@ -139,10 +139,8 @@ export default function HomeScreen(_: Props) {
     </View>
   )
 
-  // List header so header content scrolls with candidates (prevents clipping)
   const ListHeader = () => (
     <>
-      {/* Top */}
       <View style={styles.topRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Image source={require('../../assets/logo1.png')} style={styles.avatar} />
@@ -153,7 +151,6 @@ export default function HomeScreen(_: Props) {
         </View>
       </View>
 
-      {/* Countdown */}
       <View style={[styles.countCard, !isElectionOpen && styles.countCardClosed]}>
         <Text style={[styles.countTitle, !isElectionOpen && styles.countTitleClosed]}>
           Waktu tersisa untuk pemilihan
@@ -190,7 +187,6 @@ export default function HomeScreen(_: Props) {
         </View>
       </View>
 
-      {/* Heading + search */}
       <Text style={styles.sectionTitle}>Kandidat Capresma Cawapresma</Text>
       <View style={styles.searchWrapper}>
         <TextInput
@@ -212,11 +208,10 @@ export default function HomeScreen(_: Props) {
         renderItem={renderCandidate}
         ListHeaderComponent={ListHeader}
         ItemSeparatorComponent={() => <View style={{ height: 15 }} />}
-        contentContainerStyle={{ paddingBottom: 140 }} // reserve space for bottom nav + safe area
+        contentContainerStyle={{ paddingBottom: 140 }}
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Bottom nav (same appearance as InfoScreen) */}
       <View style={[styles.bottomNav, isDesktop ? styles.bottomNavDesktop : styles.bottomNavMobile]}>
         <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
           <Text style={[styles.navText, { color: '#4F46E5' }]}>Home</Text>
@@ -227,7 +222,6 @@ export default function HomeScreen(_: Props) {
         </TouchableOpacity>
       </View>
 
-      {/* Modalize Bottom Sheet for Candidate Profile */}
       <Modalize
         ref={modalRef}
         onClosed={() => setSelectedCandidateId(null)}
@@ -247,8 +241,11 @@ export default function HomeScreen(_: Props) {
             nim={nim}
             isElectionOpen={isElectionOpen}
             onVoted={() => {
+              // close sheet first, then navigate asynchronously to avoid modal unmount + sync navigation issues
               modalRef.current?.close()
-              navigation.navigate('Results')
+              setTimeout(() => {
+                navigation.navigate('Results')
+              }, 60)
             }}
           />
         ) : null}
