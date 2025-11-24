@@ -27,7 +27,7 @@
     },
 
     "web": {
-      "favicon": "./assets/logo1.png",
+      "favicon": "./assets/VoteLoge1.jpg",
       "name": "My-Vote",
       "shortName": "My-Vote",
       "meta": {

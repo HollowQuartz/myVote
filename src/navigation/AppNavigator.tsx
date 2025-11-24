@@ -23,26 +23,25 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>()
 
-// Build a valid linking config only when running in a browser
+// Build linking config for web
 const buildLinking = () => {
   if (typeof window === 'undefined') return undefined
 
   const origin = window.location.origin
+
   return {
     prefixes: [origin],
     config: {
-      // ensure the linking config uses Splash for root '/'
-      // and Home is at '/home' (so visiting '/' goes to Splash)
       initialRouteName: 'Splash',
       screens: {
-        Splash: '',                // root -> Splash
+        Splash: '',
         Onboarding: 'onboarding',
         NIM: 'nim',
-        Home: 'home',              // /home -> Home
+        Home: 'home',
         Results: 'results',
         Profile: 'profile/:candidateId',
         Success: 'success',
-        Info: 'info', 
+        Info: 'info',
       },
     },
   }
@@ -52,10 +51,20 @@ export default function AppNavigator() {
   const linking = buildLinking()
 
   return (
-    // only pass `linking` when it is defined (i.e. browser). This prevents validation errors
-    // and avoids any runtime issues in non-browser environments.
-    <NavigationContainer {...(linking ? { linking } : {})} fallback={<SplashScreen />}>
-      <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
+    <NavigationContainer
+      {...(linking ? { linking } : {})}
+      fallback={<SplashScreen />}
+
+      // 👇 **FORCE STATIC WEB TAB TITLE**
+      documentTitle={{
+        enabled: true,
+        formatter: () => 'My-Vote',
+      }}
+    >
+      <Stack.Navigator
+        initialRouteName="Splash"
+        screenOptions={{ headerShown: false }}
+      >
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="NIM" component={NIMScreen} />
