@@ -244,7 +244,7 @@ export default function HomeScreen(_: Props) {
               // close sheet first, then navigate asynchronously to avoid modal unmount + sync navigation issues
               modalRef.current?.close()
               setTimeout(() => {
-                navigation.navigate('Results')
+                navigation.navigate('Success')
               }, 60)
             }}
           />

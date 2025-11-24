@@ -42,6 +42,7 @@ const buildLinking = () => {
         Results: 'results',
         Profile: 'profile/:candidateId',
         Success: 'success',
+        Info: 'info', 
       },
     },
   }
