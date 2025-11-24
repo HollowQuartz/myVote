@@ -136,14 +136,17 @@ export default function CandidateProfileContent({
         )}
 
         <Image
-          source={
-            !imageError && candidate.photo_url
-              ? { uri: candidate.photo_url }
-              : require("../../assets/logo1.png")
-          }
-          style={styles.headerImage}
-          onError={() => setImageError(true)}
-        />
+  source={
+    !imageError && candidate.photo_url
+      ? { uri: candidate.photo_url }
+      : require("../../assets/logo1.png")
+  }
+  style={[
+    styles.headerImage,
+    { resizeMode: "contain" }
+  ]}
+  onError={() => setImageError(true)}
+/>
 
         <Text style={styles.title}>
           {candidate.name_president} & {candidate.name_vice}
@@ -306,11 +309,12 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   headerImage: {
-    width: "100%",
-    height: 220,
-    borderRadius: 10,
-    backgroundColor: "#E5E7EB",
-  },
+  width: "100%",
+  height: undefined,
+  aspectRatio: 3 / 4,   // You can adjust based on your banner shape
+  backgroundColor: "#E5E7EB",
+},
+
   title: {
     fontSize: 20,
     fontWeight: "700",
