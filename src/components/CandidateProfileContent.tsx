@@ -18,7 +18,16 @@ import {
 } from "react-native";
 import { getCandidateById, castVote } from "../lib/api";
 import { isWeb } from "../lib/platform";
-import { Video } from "expo-av";
+
+// ❗ do NOT import expo-av directly (breaks web)
+let ExpoVideo: any = null;
+if (!isWeb) {
+  try {
+    ExpoVideo = require("expo-av").Video;
+  } catch (e) {
+    ExpoVideo = null;
+  }
+}
 
 type Props = {
   candidateId: string;
@@ -44,7 +53,7 @@ export default function CandidateProfileContent({
   const [voting, setVoting] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  const anim = useRef(new Animated.Value(0)).current; // 0 = hidden, 1 = shown
+  const anim = useRef(new Animated.Value(0)).current;
   const { height, width } = useWindowDimensions();
   const isDesktop = width >= 900;
 
@@ -65,27 +74,6 @@ export default function CandidateProfileContent({
     };
   }, [candidateId]);
 
-  // prevent mobile-web pull-to-refresh while modal open (web only)
-  useEffect(() => {
-    if (!isWeb) return;
-    const prev = (document?.body as any)?.style?.overscrollBehavior || "";
-    if (visible) {
-      try {
-        (document.body as any).style.overscrollBehavior = "none";
-      } catch {}
-    } else {
-      try {
-        (document.body as any).style.overscrollBehavior = prev;
-      } catch {}
-    }
-    return () => {
-      try {
-        (document.body as any).style.overscrollBehavior = prev;
-      } catch {}
-    };
-  }, [visible]);
-
-  // animate in/out when `visible` changes
   useEffect(() => {
     if (visible) {
       Animated.timing(anim, {
@@ -102,21 +90,15 @@ export default function CandidateProfileContent({
         useNativeDriver: true,
       }).start();
     }
-  }, [visible, anim]);
+  }, [visible]);
 
   const showUserAlert = (title: string, message: string) => {
-    if (isWeb) {
-      window.alert(`${title}\n\n${message}`);
-    } else {
-      Alert.alert(title, message);
-    }
+    if (isWeb) window.alert(`${title}\n\n${message}`);
+    else Alert.alert(title, message);
   };
 
   const handleVoteNow = async () => {
-    if (!nim) {
-      showUserAlert("NIM tidak tersedia", "Masukkan NIM sebelum memilih.");
-      return;
-    }
+    if (!nim) return showUserAlert("NIM tidak tersedia", "Masukkan NIM sebelum memilih.");
 
     try {
       setVoting(true);
@@ -124,37 +106,29 @@ export default function CandidateProfileContent({
       setVoting(false);
       setConfirmVisible(false);
 
-      // animate close then call onVoted
       Animated.timing(anim, {
         toValue: 0,
-        duration: 200,
+        duration: 180,
         useNativeDriver: true,
       }).start(() => {
-        try {
-          onVoted && onVoted();
-        } catch (e) {
-          console.warn(e);
-        }
+        if (onVoted) onVoted();
       });
     } catch (err: any) {
       setVoting(false);
-      const msg = err?.message ?? "Terjadi kesalahan.";
-      showUserAlert("Gagal memilih", msg);
+      showUserAlert("Gagal memilih", err?.message ?? "Terjadi kesalahan.");
       setConfirmVisible(false);
     }
   };
 
   const openLinkSafe = (url?: string) => {
     if (!url) return;
-
     if (isWeb) {
       window.open(url, "_blank", "noopener,noreferrer");
-      return;
+    } else {
+      Linking.openURL(url).catch(() =>
+        showUserAlert("Tautan tidak valid", "Tautan tidak dapat dibuka.")
+      );
     }
-
-    Linking.openURL(url).catch(() =>
-      showUserAlert("Tautan tidak valid", "Tautan tidak dapat dibuka.")
-    );
   };
 
   if (loading)
@@ -170,14 +144,11 @@ export default function CandidateProfileContent({
 
   if (!candidate)
     return (
-      <Modal visible transparent onRequestClose={() => onClose && onClose()}>
+      <Modal visible transparent>
         <View style={modalStyles.overlay}>
           <View style={[modalStyles.box, { padding: 20 }]}>
             <Text>Profil tidak ditemukan.</Text>
-            <Pressable
-              style={[modalStyles.btn, { marginTop: 12 }]}
-              onPress={() => onClose && onClose()}
-            >
+            <Pressable style={[modalStyles.btn, { marginTop: 12 }]} onPress={onClose}>
               <Text style={modalStyles.btnPrimaryText}>Tutup</Text>
             </Pressable>
           </View>
@@ -190,43 +161,35 @@ export default function CandidateProfileContent({
     outputRange: [height, 0],
   });
 
-  // header image sizing — desktop: larger, mobile: smaller but keep contain so full image visible
-  const headerHeight = isDesktop
-    ? Math.min(420, height * 0.36)
-    : Math.min(320, height * 0.32);
-  const headerResizeMode: "cover" | "contain" = isDesktop ? "cover" : "contain";
+  const headerHeight = isDesktop ? Math.min(420, height * 0.36) : Math.min(320, height * 0.32);
+  const headerResizeMode: any = isDesktop ? "cover" : "contain";
 
   return (
     <Modal
       visible={visible}
       transparent
       animationType="none"
-      onRequestClose={() => {
-        // animate out then call onClose
-        Animated.timing(anim, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
-          onClose && onClose();
-        });
-      }}
+      onRequestClose={() =>
+        Animated.timing(anim, { toValue: 0, duration: 180, useNativeDriver: true }).start(onClose)
+      }
     >
       <Animated.View style={[modalStyles.backdrop, { opacity: anim }]} />
 
       <Animated.View
-        pointerEvents="box-none"
         style={[
           modalStyles.sheet,
           { transform: [{ translateY }], maxHeight: height - 40 },
         ]}
       >
-        {/* Handle + close */}
         <View style={modalStyles.handleRow}>
           <View style={modalStyles.handle} />
           <View style={{ flex: 1 }} />
           <TouchableOpacity
-            onPress={() => {
-              Animated.timing(anim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() =>
-                onClose && onClose()
-              );
-            }}
+            onPress={() =>
+              Animated.timing(anim, { toValue: 0, duration: 160, useNativeDriver: true }).start(
+                onClose
+              )
+            }
           >
             <Text style={modalStyles.closeText}>Tutup</Text>
           </TouchableOpacity>
@@ -235,16 +198,12 @@ export default function CandidateProfileContent({
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: 36 }]}
           nestedScrollEnabled
-          keyboardShouldPersistTaps="handled"
-          // Ensure touches start scrolling immediately on web/native — helps avoid needing to pull the sheet first
-          onStartShouldSetResponder={() => true}
-          onMoveShouldSetResponder={() => true}
-          // small noop to ensure web PUT events attached; helps mobile web capture scroll inside modal
-          onTouchStart={() => {}}
         >
           <Image
             source={
-              !imageError && candidate.photo_url ? { uri: candidate.photo_url } : require("../../assets/logo1.png")
+              !imageError && candidate.photo_url
+                ? { uri: candidate.photo_url }
+                : require("../../assets/logo1.png")
             }
             style={[styles.headerImage, { height: headerHeight }]}
             resizeMode={headerResizeMode}
@@ -256,29 +215,40 @@ export default function CandidateProfileContent({
           </Text>
           <Text style={styles.subtitle}>{candidate.faculty ?? ""}</Text>
 
-          {/* Vote button */}
           <TouchableOpacity
             style={[styles.voteNow, !isElectionOpen && styles.voteNowDisabled]}
             onPress={() => isElectionOpen && setConfirmVisible(true)}
-            activeOpacity={isElectionOpen ? 0.85 : 1}
+            activeOpacity={0.85}
           >
-            <Text style={[styles.voteNowText, !isElectionOpen && styles.voteNowTextDisabled]}>
+            <Text
+              style={[styles.voteNowText, !isElectionOpen && styles.voteNowTextDisabled]}
+            >
               {isElectionOpen ? "Vote Sekarang" : "Pemilihan Ditutup"}
             </Text>
           </TouchableOpacity>
 
-          {/* Tabs */}
+          {/* TABS */}
           <View style={styles.tabs}>
-            <TouchableOpacity style={[styles.tab, tab === "profile" && styles.tabActive]} onPress={() => setTab("profile")}>
-              <Text style={[styles.tabText, tab === "profile" && styles.tabTextActive]}>Profil</Text>
+            <TouchableOpacity
+              style={[styles.tab, tab === "profile" && styles.tabActive]}
+              onPress={() => setTab("profile")}
+            >
+              <Text style={[styles.tabText, tab === "profile" && styles.tabTextActive]}>
+                Profil
+              </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.tab, tab === "kampanye" && styles.tabActive]} onPress={() => setTab("kampanye")}>
-              <Text style={[styles.tabText, tab === "kampanye" && styles.tabTextActive]}>Kampanye</Text>
+            <TouchableOpacity
+              style={[styles.tab, tab === "kampanye" && styles.tabActive]}
+              onPress={() => setTab("kampanye")}
+            >
+              <Text style={[styles.tabText, tab === "kampanye" && styles.tabTextActive]}>
+                Kampanye
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Body */}
+          {/* PROFILE TAB */}
           {tab === "profile" ? (
             <>
               <Text style={styles.sectionHeader}>{candidate.name_president}</Text>
@@ -305,14 +275,18 @@ export default function CandidateProfileContent({
 
               {candidate.experience_president ? (
                 <>
-                  <Text style={[styles.sectionHeader, { marginTop: 12 }]}>Pengalaman (Presiden)</Text>
+                  <Text style={[styles.sectionHeader, { marginTop: 12 }]}>
+                    Pengalaman (Presiden)
+                  </Text>
                   <Text style={styles.body}>{candidate.experience_president}</Text>
                 </>
               ) : null}
 
               {candidate.experience_vice ? (
                 <>
-                  <Text style={[styles.sectionHeader, { marginTop: 12 }]}>Pengalaman (Wakil)</Text>
+                  <Text style={[styles.sectionHeader, { marginTop: 12 }]}>
+                    Pengalaman (Wakil)
+                  </Text>
                   <Text style={styles.body}>{candidate.experience_vice}</Text>
                 </>
               ) : null}
@@ -325,21 +299,30 @@ export default function CandidateProfileContent({
               <Text style={[styles.sectionHeader, { marginTop: 12 }]}>Misi</Text>
               <Text style={styles.body}>{candidate.mission ?? "-"}</Text>
 
-              {/* Campaign video (expo-av Video works on web & native) */}
+              {/* VIDEO */}
               {candidate.campaign_video_url ? (
-                <View style={{ marginTop: 16 }}>
+                <View style={{ marginTop: 20 }}>
                   <Text style={styles.sectionHeader}>Video Kampanye</Text>
 
-                  {/* Wrapper keeps 16:9 aspect and prevents cropping */}
                   <View style={videoStyles.wrapper}>
-                    {/* expo-av Video handles both web & native reasonably; using resizeMode contain */}
-                    <Video
-                      source={{ uri: candidate.campaign_video_url }}
-                      style={videoStyles.player}
-                      useNativeControls
-                      resizeMode="contain"
-                      shouldPlay={false}
-                    />
+                    {isWeb ? (
+                      <video
+                        controls
+                        src={candidate.campaign_video_url}
+                        style={videoStyles.webVideo}
+                      />
+                    ) : ExpoVideo ? (
+                      <ExpoVideo
+                        source={{ uri: candidate.campaign_video_url }}
+                        style={videoStyles.nativeVideo}
+                        resizeMode="contain"
+                        useNativeControls
+                      />
+                    ) : (
+                      <View style={videoStyles.nativeFallback}>
+                        <Text style={{ color: "#fff" }}>expo-av tidak terpasang</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               ) : null}
@@ -349,20 +332,31 @@ export default function CandidateProfileContent({
           <View style={{ height: 40 }} />
         </ScrollView>
 
-        {/* Confirmation modal inside sheet */}
-        <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
+        {/* CONFIRM MODAL */}
+        <Modal visible={confirmVisible} transparent animationType="fade">
           <View style={modalStyles.overlay}>
             <View style={modalStyles.box}>
               <Text style={modalStyles.title}>Konfirmasi</Text>
-              <Text style={modalStyles.message}>Apakah kamu yakin? Vote-mu tidak bisa diubah.</Text>
+              <Text style={modalStyles.message}>
+                Apakah kamu yakin? Vote-mu tidak bisa diubah.
+              </Text>
 
               <View style={modalStyles.buttonsRow}>
-                <Pressable style={[modalStyles.btn, modalStyles.btnOutline]} onPress={() => setConfirmVisible(false)}>
+                <Pressable
+                  style={[modalStyles.btn, modalStyles.btnOutline]}
+                  onPress={() => setConfirmVisible(false)}
+                >
                   <Text style={modalStyles.btnOutlineText}>Batal</Text>
                 </Pressable>
 
-                <Pressable style={[modalStyles.btn, modalStyles.btnPrimary]} onPress={handleVoteNow} disabled={voting}>
-                  <Text style={modalStyles.btnPrimaryText}>{voting ? "Memilih..." : "Konfirmasi"}</Text>
+                <Pressable
+                  style={[modalStyles.btn, modalStyles.btnPrimary]}
+                  onPress={handleVoteNow}
+                  disabled={voting}
+                >
+                  <Text style={modalStyles.btnPrimaryText}>
+                    {voting ? "Memilih..." : "Konfirmasi"}
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -396,7 +390,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  /* Vote */
   voteNow: {
     backgroundColor: "#4F46E5",
     paddingVertical: 12,
@@ -414,7 +407,6 @@ const styles = StyleSheet.create({
     color: "#E5E7EB",
   },
 
-  /* Tabs */
   tabs: {
     flexDirection: "row",
     marginTop: 20,
@@ -437,7 +429,6 @@ const styles = StyleSheet.create({
     color: "#6D28D9",
   },
 
-  /* Body */
   sectionHeader: {
     fontWeight: "700",
     marginTop: 16,
@@ -455,24 +446,38 @@ const styles = StyleSheet.create({
   },
 });
 
-/* Video styles */
+/* VIDEO SECTION */
 const videoStyles = StyleSheet.create({
   wrapper: {
     width: "100%",
-    // prefer aspectRatio; if not supported on web, height fallback in player ensures visible area
     aspectRatio: 16 / 9,
     borderRadius: 10,
+    backgroundColor: "#000",
     overflow: "hidden",
+    marginTop: 10,
+  },
+  webVideo: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
     backgroundColor: "#000",
   },
-  player: {
+  nativeVideo: {
     width: "100%",
     height: "100%",
     backgroundColor: "#000",
   },
+  nativeFallback: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#333",
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });
 
-/* Modal styles used by both the sheet and inner confirmation modal */
+/* MODAL STYLES */
 const modalStyles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
