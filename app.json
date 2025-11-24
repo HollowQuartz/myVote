@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "votebem",
-    "slug": "votebem",
+    "name": "My-Vote",
+    "slug": "my-vote",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -25,7 +25,7 @@
       "package": "com.holowjades.votebem"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logo1.png"
     },
     "extra": {
       "eas": {
