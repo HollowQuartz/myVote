@@ -65,6 +65,26 @@ export default function CandidateProfileContent({
     };
   }, [candidateId]);
 
+  // prevent mobile-web pull-to-refresh while modal open (web only)
+  useEffect(() => {
+    if (!isWeb) return;
+    const prev = (document?.body as any)?.style?.overscrollBehavior || "";
+    if (visible) {
+      try {
+        (document.body as any).style.overscrollBehavior = "none";
+      } catch {}
+    } else {
+      try {
+        (document.body as any).style.overscrollBehavior = prev;
+      } catch {}
+    }
+    return () => {
+      try {
+        (document.body as any).style.overscrollBehavior = prev;
+      } catch {}
+    };
+  }, [visible]);
+
   // animate in/out when `visible` changes
   useEffect(() => {
     if (visible) {
@@ -110,7 +130,11 @@ export default function CandidateProfileContent({
         duration: 200,
         useNativeDriver: true,
       }).start(() => {
-        try { onVoted && onVoted() } catch (e) { console.warn(e) }
+        try {
+          onVoted && onVoted();
+        } catch (e) {
+          console.warn(e);
+        }
       });
     } catch (err: any) {
       setVoting(false);
@@ -150,7 +174,10 @@ export default function CandidateProfileContent({
         <View style={modalStyles.overlay}>
           <View style={[modalStyles.box, { padding: 20 }]}>
             <Text>Profil tidak ditemukan.</Text>
-            <Pressable style={[modalStyles.btn, { marginTop: 12 }]} onPress={() => onClose && onClose()}>
+            <Pressable
+              style={[modalStyles.btn, { marginTop: 12 }]}
+              onPress={() => onClose && onClose()}
+            >
               <Text style={modalStyles.btnPrimaryText}>Tutup</Text>
             </Pressable>
           </View>
@@ -164,8 +191,10 @@ export default function CandidateProfileContent({
   });
 
   // header image sizing — desktop: larger, mobile: smaller but keep contain so full image visible
-  const headerHeight = isDesktop ? Math.min(420, height * 0.36) : Math.min(320, height * 0.32);
-  const headerResizeMode: 'cover' | 'contain' = isDesktop ? 'cover' : 'contain';
+  const headerHeight = isDesktop
+    ? Math.min(420, height * 0.36)
+    : Math.min(320, height * 0.32);
+  const headerResizeMode: "cover" | "contain" = isDesktop ? "cover" : "contain";
 
   return (
     <Modal
@@ -175,25 +204,30 @@ export default function CandidateProfileContent({
       onRequestClose={() => {
         // animate out then call onClose
         Animated.timing(anim, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
-          onClose && onClose()
-        })
+          onClose && onClose();
+        });
       }}
     >
-      <Animated.View style={[modalStyles.backdrop, { opacity: anim }]}/>
+      <Animated.View style={[modalStyles.backdrop, { opacity: anim }]} />
 
       <Animated.View
+        pointerEvents="box-none"
         style={[
           modalStyles.sheet,
-          { transform: [{ translateY }], maxHeight: height - 40 }
+          { transform: [{ translateY }], maxHeight: height - 40 },
         ]}
       >
         {/* Handle + close */}
         <View style={modalStyles.handleRow}>
-          <View style={modalStyles.handle}/>
-          <View style={{ flex: 1 }}/>
-          <TouchableOpacity onPress={() => {
-            Animated.timing(anim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => onClose && onClose())
-          }}>
+          <View style={modalStyles.handle} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            onPress={() => {
+              Animated.timing(anim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() =>
+                onClose && onClose()
+              );
+            }}
+          >
             <Text style={modalStyles.closeText}>Tutup</Text>
           </TouchableOpacity>
         </View>
@@ -202,9 +236,16 @@ export default function CandidateProfileContent({
           contentContainerStyle={[styles.content, { paddingBottom: 36 }]}
           nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
+          // Ensure touches start scrolling immediately on web/native — helps avoid needing to pull the sheet first
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          // small noop to ensure web PUT events attached; helps mobile web capture scroll inside modal
+          onTouchStart={() => {}}
         >
           <Image
-            source={!imageError && candidate.photo_url ? { uri: candidate.photo_url } : require("../../assets/logo1.png")}
+            source={
+              !imageError && candidate.photo_url ? { uri: candidate.photo_url } : require("../../assets/logo1.png")
+            }
             style={[styles.headerImage, { height: headerHeight }]}
             resizeMode={headerResizeMode}
             onError={() => setImageError(true)}
@@ -288,10 +329,13 @@ export default function CandidateProfileContent({
               {candidate.campaign_video_url ? (
                 <View style={{ marginTop: 16 }}>
                   <Text style={styles.sectionHeader}>Video Kampanye</Text>
-                  <View style={{ marginTop: 8 }}>
+
+                  {/* Wrapper keeps 16:9 aspect and prevents cropping */}
+                  <View style={videoStyles.wrapper}>
+                    {/* expo-av Video handles both web & native reasonably; using resizeMode contain */}
                     <Video
                       source={{ uri: candidate.campaign_video_url }}
-                      style={{ width: '100%', height: 220, borderRadius: 8, backgroundColor: '#000' }}
+                      style={videoStyles.player}
                       useNativeControls
                       resizeMode="contain"
                       shouldPlay={false}
@@ -301,18 +345,6 @@ export default function CandidateProfileContent({
               ) : null}
             </>
           )}
-
-          {/* Social links
-          {candidate.social_links && (
-            <View style={{ marginTop: 18 }}>
-              <Text style={styles.sectionHeader}>Sosial</Text>
-              {Object.entries(candidate.social_links).map(([k, v]) => (
-                <TouchableOpacity key={k} onPress={() => openLinkSafe(v as string)}>
-                  <Text style={[styles.body, { color: "#3B82F6" }]}>{k}: {String(v)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )} */}
 
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -423,6 +455,23 @@ const styles = StyleSheet.create({
   },
 });
 
+/* Video styles */
+const videoStyles = StyleSheet.create({
+  wrapper: {
+    width: "100%",
+    // prefer aspectRatio; if not supported on web, height fallback in player ensures visible area
+    aspectRatio: 16 / 9,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
+  player: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#000",
+  },
+});
+
 /* Modal styles used by both the sheet and inner confirmation modal */
 const modalStyles = StyleSheet.create({
   backdrop: {
@@ -431,20 +480,20 @@ const modalStyles = StyleSheet.create({
     zIndex: 999,
   },
   sheet: {
-    position: 'absolute',
+    position: "absolute",
     left: 12,
     right: 12,
     bottom: 20,
     borderRadius: 12,
-    backgroundColor: '#fff',
-    overflow: 'hidden',
-    maxHeight: '85%',
+    backgroundColor: "#fff",
+    overflow: "hidden",
+    maxHeight: "85%",
     zIndex: 1000,
     elevation: 10,
   },
   handleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingTop: 10,
     paddingHorizontal: 12,
     paddingBottom: 4,
@@ -453,12 +502,12 @@ const modalStyles = StyleSheet.create({
     width: 48,
     height: 6,
     borderRadius: 6,
-    backgroundColor: '#E5E7EB',
-    alignSelf: 'center',
+    backgroundColor: "#E5E7EB",
+    alignSelf: "center",
   },
   closeText: {
-    color: '#6B7280',
-    fontWeight: '700',
+    color: "#6B7280",
+    fontWeight: "700",
   },
 
   overlay: {
